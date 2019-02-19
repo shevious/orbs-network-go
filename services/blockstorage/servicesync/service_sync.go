@@ -76,15 +76,15 @@ func NewServiceBlockSync(ctx context.Context, logger log.BasicLogger, source blo
 		var height primitives.BlockHeight
 		var err error
 		for err == nil {
-			logger.Info("NewServiceBlockSync() starting to wait for block", log.Stringable("wait-for-block", height+1)) // TODO remove this
+			logger.Info("service sync starting to wait for block", log.Stringable("wait-for-block", height+1)) // TODO remove this
 			err = source.GetBlockTracker().WaitForBlock(ctx, height+1)
 			if err != nil {
-				logger.Info("NewServiceBlockSync() failed waiting for block", log.Error(err))
+				logger.Info("service sync failed waiting for block", log.Error(err))
 				return
 			}
-			logger.Info("NewServiceBlockSync() block arrived", log.Stringable("wait-for-block", height+1)) // TODO remove this
+			logger.Info("service sync block arrived", log.Stringable("wait-for-block", height+1)) // TODO remove this
 			height, err = syncToTopBlock(ctx, source, committer, logger)
-			logger.Info("NewServiceBlockSync() synced to block", log.Stringable("wait-for-block", height)) // TODO remove this
+			logger.Info("service sync synced to block", log.Stringable("wait-for-block", height)) // TODO remove this
 		}
 	})
 }

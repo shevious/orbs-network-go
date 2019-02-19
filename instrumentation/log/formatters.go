@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/go-playground/ansi"
+	"github.com/orbs-network/orbs-contract-sdk/go/context/g"
 	"strconv"
 	"strings"
 	"time"
@@ -196,16 +197,11 @@ func (j *humanReadableFormatter) FormatRow(timestamp time.Time, level string, me
 	return builder.String()
 }
 
-func colorize(fields []*Field) string {
-	colors := []string{ansi.Cyan, ansi.Yellow, ansi.LightBlue, ansi.Magenta, ansi.LightYellow, ansi.LightRed, ansi.LightGreen, ansi.LightMagenta, ansi.Green}
-	for _, f := range fields {
-		if f.Key == "request-id" {
-			fourthBeforeLastChar := int(f.StringVal[len(f.StringVal)-4])
-			return colors[fourthBeforeLastChar%len(colors)]
-		}
-	}
+var colors = []string{ansi.Cyan, ansi.Yellow, ansi.LightBlue, ansi.Magenta, ansi.LightYellow, ansi.LightRed, ansi.LightGreen, ansi.LightMagenta, ansi.Green}
 
-	return ""
+func colorize(fields []*Field) string {
+	gid := uintptr(g.G())
+	return colors[gid%uintptr(len(colors))]
 }
 
 func NewHumanReadableFormatter() LogFormatter {

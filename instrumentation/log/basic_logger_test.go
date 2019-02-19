@@ -155,8 +155,7 @@ func TestCustomLogFormatter(t *testing.T) {
 
 	out := b.String()
 
-	require.Regexp(t, "^info", out)
-	require.Regexp(t, "Service initialized", out)
+	require.Regexp(t, "info.*Service initialized", out)
 	require.Regexp(t, "node=node1", out)
 	require.Regexp(t, "service=public-api", out)
 	require.Regexp(t, "block-height=270f", out)
