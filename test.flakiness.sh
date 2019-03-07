@@ -2,6 +2,9 @@
 
 . ./test.common.sh
 
+export GOTRACEBACK="all"
+
+
 LAST_COMMIT_MESSAGE=`git --no-pager log --decorate=short --pretty=oneline -n1 $CIRCLE_SHA1`
 FAILFAST="-failfast"
 TIMEOUT_ACCEPTANCE="20m"

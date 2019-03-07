@@ -2,7 +2,9 @@ package acceptance
 
 import (
 	"context"
+	"fmt"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
+	"github.com/orbs-network/orbs-network-go/synchronization"
 	"github.com/orbs-network/orbs-network-go/synchronization/supervised"
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
@@ -125,6 +127,15 @@ func (b *networkHarnessBuilder) runTest(tb testing.TB, consensusAlgo consensus.C
 		// TODO: if we experience flakiness during system shutdown move TestTerminated to be under test.WithContextWithTimeout
 
 		test.WithContextWithTimeout(TEST_TIMEOUT_HARD_LIMIT, func(ctx context.Context) {
+			go func() {
+				synchronization.NewPeriodicalTrigger(ctx, 500*time.Millisecond, logger, func() {
+					var m runtime.MemStats
+					runtime.ReadMemStats(&m)
+
+					fmt.Printf("Alloc = %v b\tTotalAlloc = %v b\tSys = %v b\tNumGC = %v\n", m.Alloc, m.TotalAlloc, m.Sys, m.NumGC)
+				}, nil)
+			}()
+
 			network := newAcceptanceTestNetwork(ctx, logger, consensusAlgo, b.blockChain, b.numNodes, b.maxTxPerBlock, b.requiredQuorumPercentage)
 
 			logger.Info("acceptance network created")
