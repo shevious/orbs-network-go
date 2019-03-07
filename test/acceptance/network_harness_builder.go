@@ -10,7 +10,9 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/protocol/consensus"
 	"math/rand"
+	"os"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"testing"
@@ -132,7 +134,13 @@ func (b *networkHarnessBuilder) runTest(tb testing.TB, consensusAlgo consensus.C
 					var m runtime.MemStats
 					runtime.ReadMemStats(&m)
 
-					fmt.Printf("Alloc = %v b\tTotalAlloc = %v b\tSys = %v b\tNumGC = %v\n", m.Alloc, m.TotalAlloc, m.Sys, m.NumGC)
+					if m.Alloc < 12000000000 {
+						fmt.Printf("Alloc = %v b\tTotalAlloc = %v b\tSys = %v b\tNumGC = %v\n", m.Alloc, m.TotalAlloc, m.Sys, m.NumGC)
+					} else {
+						fmt.Printf("Alloc = %v b\tTotalAlloc = %v b\tSys = %v b\tNumGC = %v\n", m.Alloc, m.TotalAlloc, m.Sys, m.NumGC)
+						pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+					}
+
 				}, nil)
 			}()
 
