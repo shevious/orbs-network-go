@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package filesystem
 
 import (
@@ -26,7 +32,7 @@ const blocksFilename = "blocks"
 
 func newMetrics(m metric.Factory) *metrics {
 	return &metrics{
-		size: m.NewGauge("BlockStorage.FilesystemBlockPersistence.SizeInBytes"),
+		size: m.NewGauge("BlockStorage.FileSystemSize.Bytes"),
 	}
 }
 
@@ -192,7 +198,7 @@ func newFileBlockWriter(file *os.File, codec blockCodec, nextBlockOffset int64) 
 }
 
 func buildIndex(r io.Reader, firstBlockOffset int64, logger log.BasicLogger, c blockCodec) (*blockHeightIndex, error) {
-	bhIndex := newBlockHeightIndex(firstBlockOffset)
+	bhIndex := newBlockHeightIndex(logger, firstBlockOffset)
 	offset := int64(firstBlockOffset)
 	for {
 		aBlock, blockSize, err := c.decode(r)
@@ -213,7 +219,7 @@ func buildIndex(r io.Reader, firstBlockOffset int64, logger log.BasicLogger, c b
 	return bhIndex, nil
 }
 
-func (f *FilesystemBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) error {
+func (f *FilesystemBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) (bool, error) {
 	f.blockWriter.Lock()
 	defer f.blockWriter.Unlock()
 
@@ -221,36 +227,45 @@ func (f *FilesystemBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPai
 
 	currentTop := f.bhIndex.getLastBlockHeight()
 	if bh != currentTop+1 {
-		return fmt.Errorf("attempt to write block %d out of order. current top height is %d", bh, currentTop)
+		if bh <= currentTop {
+			return false, nil
+		}
+		return false, fmt.Errorf("attempt to write block %d out of order. current top height is %d", bh, currentTop)
 	}
 
 	n, err := f.blockWriter.writeBlock(blockPair)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	startPos := f.bhIndex.fetchBlockOffset(bh)
 	err = f.bhIndex.appendBlock(startPos, startPos+int64(n), blockPair)
 	if err != nil {
-		return errors.Wrap(err, "failed to update index after writing block")
+		return false, errors.Wrap(err, "failed to update index after writing block")
 	}
 
 	f.blockTracker.IncrementTo(currentTop + 1)
 	f.metrics.size.Add(int64(n))
 
-	return nil
+	return true, nil
 }
 
 func (f *FilesystemBlockPersistence) ScanBlocks(from primitives.BlockHeight, pageSize uint8, cursor adapter.CursorFunc) error {
+	currentTop := f.bhIndex.topBlockHeight
+	if currentTop < from {
+		return fmt.Errorf("requested unknown block height %d. current height is %d", from, currentTop)
+	}
+
 	file, err := os.Open(f.blockFileName())
 	if err != nil {
 		return errors.Wrap(err, "failed to open blocks file for reading")
 	}
 	defer closeSilently(file, f.logger)
 
-	newOffset, err := file.Seek(f.bhIndex.fetchBlockOffset(from), io.SeekStart)
-	if newOffset != f.bhIndex.fetchBlockOffset(from) || err != nil {
-		return errors.Wrapf(err, "failed to seek in blocks file to position %v", f.bhIndex.fetchBlockOffset(from))
+	initialOffset := f.bhIndex.fetchBlockOffset(from)
+	newOffset, err := file.Seek(initialOffset, io.SeekStart)
+	if newOffset != initialOffset || err != nil {
+		return errors.Wrapf(err, "failed to seek in blocks file to position %v", initialOffset)
 	}
 
 	wantNext := true

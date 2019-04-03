@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package consensuscontext
 
 import (
@@ -61,9 +67,9 @@ func validateTxTransactionsBlockTimestamp(ctx context.Context, vctx *txValidator
 	currentBlockTimestamp := vctx.input.TransactionsBlock.Header.Timestamp()
 	allowedTimestampJitter := vctx.allowedTimestampJitter
 	now := time.Now()
-	if !isValidBlockTimestamp(currentBlockTimestamp, prevBlockTimestamp, now, allowedTimestampJitter) {
-		return errors.Wrapf(ErrInvalidBlockTimestamp, "currentTimestamp %v prevTimestamp %v now %v allowed jitter %v",
-			currentBlockTimestamp, prevBlockTimestamp, now, allowedTimestampJitter)
+	if err := isValidBlockTimestamp(currentBlockTimestamp, prevBlockTimestamp, now, allowedTimestampJitter); err != nil {
+		return errors.Wrapf(ErrInvalidBlockTimestamp, "currentTimestamp %v prevTimestamp %v now %v allowed jitter %v, err=%v",
+			currentBlockTimestamp, prevBlockTimestamp, now, allowedTimestampJitter, err)
 	}
 	return nil
 }
@@ -122,7 +128,7 @@ func (s *service) ValidateTransactionsBlock(ctx context.Context, input *services
 	return &services.ValidateTransactionsBlockOutput{}, nil
 }
 
-func isValidBlockTimestamp(currentBlockTimestamp primitives.TimestampNano, prevBlockTimestamp primitives.TimestampNano, now time.Time, allowedTimestampJitter time.Duration) bool {
+func isValidBlockTimestamp(currentBlockTimestamp primitives.TimestampNano, prevBlockTimestamp primitives.TimestampNano, now time.Time, allowedTimestampJitter time.Duration) error {
 
 	if allowedTimestampJitter < 0 {
 		panic("allowedTimestampJitter cannot be negative")
@@ -139,14 +145,14 @@ func isValidBlockTimestamp(currentBlockTimestamp primitives.TimestampNano, prevB
 	}
 
 	if prevBlockTimestamp >= currentBlockTimestamp {
-		return false
+		return errors.Errorf("prevBlockTimestamp >= currentBlockTimestamp: prevBlockTimestamp=%s currentBlockTimestamp=%s", prevBlockTimestamp, currentBlockTimestamp)
 	}
 	if uint64(currentBlockTimestamp) > uint64(upperJitterLimit) {
-		return false
+		return errors.Errorf("currentBlockTimestamp is later upperJitterLimit: currentBlockTimestamp=%d upperJitterLimit=%d", uint64(currentBlockTimestamp), uint64(upperJitterLimit))
 	}
 
 	if uint64(currentBlockTimestamp) < uint64(lowerJitterLimit) {
-		return false
+		return errors.Errorf("currentBlockTimestamp is before lowerJitterLimit: currentBlockTimestamp=%d lowerJitterLimit=%d", uint64(currentBlockTimestamp), uint64(lowerJitterLimit))
 	}
-	return true
+	return nil
 }

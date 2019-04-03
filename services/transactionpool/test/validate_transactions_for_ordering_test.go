@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -13,7 +19,7 @@ import (
 
 func TestValidateTransactionsForOrderingAcceptsOkTransactions(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		require.NoError(t,
 			h.validateTransactionsForOrdering(ctx, 2, builders.Transaction().Build(), builders.Transaction().Build()),
@@ -23,7 +29,7 @@ func TestValidateTransactionsForOrderingAcceptsOkTransactions(t *testing.T) {
 
 func TestValidateTransactionsForOrderingRejectsCommittedTransactions(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		h.ignoringForwardMessages()
 		h.ignoringTransactionResults()
@@ -43,7 +49,7 @@ func TestValidateTransactionsForOrderingRejectsCommittedTransactions(t *testing.
 
 func TestValidateTransactionsForOrderingRejectsTransactionsFailingValidation(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		invalidTx := builders.TransferTransaction().WithTimestampInFarFuture().Build()
 
@@ -58,12 +64,12 @@ func TestValidateTransactionsForOrderingRejectsTransactionsFailingValidation(t *
 
 func TestValidateTransactionsForOrderingRejectsTransactionsFailingPreOrderChecks(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		invalidTx := builders.TransferTransaction().Build()
 		h.failPreOrderCheckFor(func(tx *protocol.SignedTransaction) bool {
 			return tx == invalidTx
-		})
+		}, protocol.TRANSACTION_STATUS_REJECTED_SMART_CONTRACT_PRE_ORDER)
 
 		require.EqualErrorf(t,
 			h.validateTransactionsForOrdering(ctx, 2, builders.Transaction().Build(), invalidTx),
@@ -74,7 +80,7 @@ func TestValidateTransactionsForOrderingRejectsTransactionsFailingPreOrderChecks
 
 func TestValidateTransactionsForOrderingRejectsBlockHeightOutsideOfGrace(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		require.EqualErrorf(t,
 			h.validateTransactionsForOrdering(ctx, 666, builders.Transaction().Build()),

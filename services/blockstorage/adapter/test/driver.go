@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -7,8 +13,8 @@ import (
 	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
 	"github.com/orbs-network/orbs-network-go/services/blockstorage/adapter"
 	"github.com/orbs-network/orbs-network-go/services/blockstorage/adapter/filesystem"
-	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
+	"github.com/orbs-network/orbs-network-go/test/rand"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/stretchr/testify/require"
@@ -25,10 +31,10 @@ import (
 
 const blocksFilename = "blocks"
 
-func NewFilesystemAdapterDriver(conf config.FilesystemBlockPersistenceConfig) (adapter.BlockPersistence, func(), error) {
+func NewFilesystemAdapterDriver(logger log.BasicLogger, conf config.FilesystemBlockPersistenceConfig) (adapter.BlockPersistence, func(), error) {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
-	persistence, err := filesystem.NewBlockPersistence(ctx, conf, log.GetLogger(), metric.NewRegistry())
+	persistence, err := filesystem.NewBlockPersistence(ctx, conf, logger, metric.NewRegistry())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,15 +116,15 @@ func flipBitInFile(t *testing.T, conf *localConfig, offset int64, bitMask byte) 
 	require.NoError(t, err)
 }
 
-func writeRandomBlocksToFile(t *testing.T, conf *localConfig, numBlocks int32, ctrlRand *test.ControlledRand) []*protocol.BlockPairContainer {
-	fsa, closeAdapter, err := NewFilesystemAdapterDriver(conf)
+func writeRandomBlocksToFile(t *testing.T, conf *localConfig, numBlocks int32, ctrlRand *rand.ControlledRand) []*protocol.BlockPairContainer {
+	fsa, closeAdapter, err := NewFilesystemAdapterDriver(log.DefaultTestingLogger(t), conf)
 	require.NoError(t, err)
 	defer closeAdapter()
 
 	blockChain := builders.RandomizedBlockChain(numBlocks, ctrlRand)
 
 	for _, block := range blockChain {
-		err = fsa.WriteNextBlock(block)
+		_, err = fsa.WriteNextBlock(block)
 		require.NoError(t, err)
 	}
 	return blockChain

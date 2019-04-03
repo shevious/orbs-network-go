@@ -1,9 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package consensuscontext
 
 import (
 	"context"
 	"github.com/orbs-network/orbs-network-go/crypto/digest"
-	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/pkg/errors"
@@ -14,11 +19,13 @@ func (s *service) createTransactionsBlock(ctx context.Context, input *services.R
 	start := time.Now()
 	defer s.metrics.createTxBlockTime.RecordSince(start)
 
-	newBlockTimestamp := digest.CalcNewBlockTimestamp(input.PrevBlockTimestamp, primitives.TimestampNano(time.Now().UnixNano()))
-
-	proposedTransactions, err := s.fetchTransactions(ctx, input.CurrentBlockHeight, newBlockTimestamp, s.config.ConsensusContextMaximumTransactionsInBlock())
+	proposedTransactions, err := s.fetchTransactions(ctx, input.CurrentBlockHeight, input.PrevBlockTimestamp, s.config.ConsensusContextMaximumTransactionsInBlock())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to fetch transactions for new block")
+	}
+	newBlockTimestamp := proposedTransactions.ProposedBlockTimestamp
+	if newBlockTimestamp == 0 {
+		return nil, errors.New("transactions pool GetTransactionsForOrdering returned proposed block timestamp of zero")
 	}
 	txCount := len(proposedTransactions.SignedTransactions)
 

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -11,7 +17,7 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/orbs-network/orbs-spec/types/go/services/handlers"
-	"os"
+	"testing"
 )
 
 type harness struct {
@@ -19,12 +25,12 @@ type harness struct {
 	stateStorage         *services.MockStateStorage
 	processors           map[protocol.ProcessorType]*services.MockProcessor
 	crosschainConnectors map[protocol.CrosschainConnectorType]*services.MockCrosschainConnector
-	reporting            log.BasicLogger
+	logger               log.BasicLogger
 	service              services.VirtualMachine
 }
 
-func newHarness() *harness {
-	log := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newHarness(tb testing.TB) *harness {
+	logger := log.DefaultTestingLogger(tb)
 
 	blockStorage := &services.MockBlockStorage{}
 	stateStorage := &services.MockStateStorage{}
@@ -50,7 +56,7 @@ func newHarness() *harness {
 		stateStorage,
 		processorsForService,
 		crosschainConnectorsForService,
-		log,
+		logger,
 	)
 
 	return &harness{
@@ -58,7 +64,7 @@ func newHarness() *harness {
 		stateStorage:         stateStorage,
 		processors:           processors,
 		crosschainConnectors: crosschainConnectors,
-		reporting:            log,
+		logger:               logger,
 		service:              service,
 	}
 }
@@ -104,6 +110,17 @@ func (h *harness) processQuery(ctx context.Context, contractName primitives.Cont
 		}).Build(),
 	})
 	return output.CallResult, output.OutputArgumentArray, output.ReferenceBlockHeight, output.OutputEventsArray, err
+}
+
+func (h *harness) callSystemContract(ctx context.Context, blockHeight primitives.BlockHeight, contractName primitives.ContractName, methodName primitives.MethodName, args ...interface{}) (protocol.ExecutionResult, *protocol.ArgumentArray, error) {
+	output, err := h.service.CallSystemContract(ctx, &services.CallSystemContractInput{
+		BlockHeight:        blockHeight,
+		BlockTimestamp:     0,
+		ContractName:       contractName,
+		MethodName:         methodName,
+		InputArgumentArray: builders.ArgumentsArray(args...),
+	})
+	return output.CallResult, output.OutputArgumentArray, err
 }
 
 type keyValuePair struct {

@@ -1,10 +1,18 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package blockstorage
 
 import (
 	"context"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/trace"
+	"github.com/orbs-network/orbs-network-go/synchronization/supervised"
 	"github.com/orbs-network/orbs-spec/types/go/services"
+	"time"
 )
 
 func (s *service) NodeSyncCommitBlock(ctx context.Context, input *services.CommitBlockInput) (*services.CommitBlockOutput, error) {
@@ -38,18 +46,22 @@ func (s *service) commitBlock(ctx context.Context, input *services.CommitBlockIn
 		return nil, err
 	}
 
-	if err := s.validateBlockHeight(input.BlockPair, lastCommittedBlock); err != nil {
+	if err := s.validateConsecutiveBlockHeight(input.BlockPair, lastCommittedBlock); err != nil {
 		return nil, err
 	}
 
-	if err := s.persistence.WriteNextBlock(input.BlockPair); err != nil {
+	if _, err := s.persistence.WriteNextBlock(input.BlockPair); err != nil {
 		return nil, err
 	}
 
 	s.metrics.blockHeight.Update(int64(input.BlockPair.TransactionsBlock.Header.BlockHeight()))
 
 	if notifyNodeSync {
-		s.nodeSync.HandleBlockCommitted(ctx)
+		supervised.GoOnce(logger, func() {
+			shortCtx, cancel := context.WithTimeout(ctx, time.Second) // TODO V1 move timeout to configuration
+			defer cancel()
+			s.nodeSync.HandleBlockCommitted(shortCtx)
+		})
 	}
 
 	logger.Info("committed a block", log.BlockHeight(txBlockHeader.BlockHeight()), log.Int("num-transactions", len(input.BlockPair.TransactionsBlock.SignedTransactions)))

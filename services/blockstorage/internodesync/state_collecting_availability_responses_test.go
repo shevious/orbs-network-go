@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package internodesync
 
 import (
 	"context"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/synchronization"
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
@@ -11,42 +18,42 @@ import (
 
 func TestStateCollectingAvailabilityResponses_ReturnsToIdleOnGossipError(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newBlockSyncHarness()
+		h := newBlockSyncHarness(log.DefaultTestingLogger(t))
 
-		h.expectPreSynchronizationUpdateOfConsensusAlgos(10)
+		h.expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(10)
 		h.expectBroadcastOfBlockAvailabilityRequestToFail()
 
 		state := h.factory.CreateCollectingAvailabilityResponseState()
 		nextState := state.processState(ctx)
 
 		require.IsType(t, &idleState{}, nextState, "next state should be idle on gossip error")
-		h.verifyMocks(t)
+		h.eventuallyVerifyMocks(t, 1)
 	})
 }
 
 func TestStateCollectingAvailabilityResponses_ReturnsToIdleOnInvalidRequestSizeConfig(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
 		// this can probably happen only if BatchSize config is invalid
-		h := newBlockSyncHarness().withBatchSize(0)
+		h := newBlockSyncHarness(log.DefaultTestingLogger(t)).withBatchSize(0)
 
-		h.expectPreSynchronizationUpdateOfConsensusAlgos(0) // new server
+		h.expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(0) // new server
 
 		state := h.factory.CreateCollectingAvailabilityResponseState()
 		nextState := state.processState(ctx)
 
 		require.IsType(t, &idleState{}, nextState, "next state should be idle on gossip error flow")
-		h.verifyMocks(t)
+		h.eventuallyVerifyMocks(t, 1)
 	})
 }
 
 func TestStateCollectingAvailabilityResponses_MovesToFinishedCollecting(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
 		manualCollectResponsesTimer := synchronization.NewTimerWithManualTick()
-		h := newBlockSyncHarnessWithCollectResponsesTimer(func() *synchronization.Timer {
+		h := newBlockSyncHarnessWithCollectResponsesTimer(log.DefaultTestingLogger(t), func() *synchronization.Timer {
 			return manualCollectResponsesTimer
 		})
 
-		h.expectPreSynchronizationUpdateOfConsensusAlgos(10)
+		h.expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(10)
 		h.expectBroadcastOfBlockAvailabilityRequest()
 
 		message := builders.BlockAvailabilityResponseInput().Build().Message
@@ -63,16 +70,16 @@ func TestStateCollectingAvailabilityResponses_MovesToFinishedCollecting(t *testi
 		require.Equal(t, message.Sender, fcar.responses[0].Sender, "state sender should match message sender")
 		require.Equal(t, message.SignedBatchRange, fcar.responses[0].SignedBatchRange, "state payload should match message")
 
-		h.verifyMocks(t)
+		h.eventuallyVerifyMocks(t, 1)
 	})
 }
 
 func TestStateCollectingAvailabilityResponses_ContextTermination(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h := newBlockSyncHarness()
+	h := newBlockSyncHarness(log.DefaultTestingLogger(t))
 
-	h.expectPreSynchronizationUpdateOfConsensusAlgos(10)
+	h.expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(10)
 	h.expectBroadcastOfBlockAvailabilityRequest()
 
 	state := h.factory.CreateCollectingAvailabilityResponseState()
@@ -80,5 +87,5 @@ func TestStateCollectingAvailabilityResponses_ContextTermination(t *testing.T) {
 
 	require.Nil(t, nextState, "context terminated, next state should be nil")
 
-	h.verifyMocks(t)
+	h.eventuallyVerifyMocks(t, 1)
 }

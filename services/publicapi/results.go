@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package publicapi
 
 import (
@@ -52,7 +58,7 @@ func translateTransactionStatusToRequestStatus(txStatus protocol.TransactionStat
 	case protocol.TRANSACTION_STATUS_DUPLICATE_TRANSACTION_ALREADY_PENDING:
 		return protocol.REQUEST_STATUS_IN_PROCESS
 	case protocol.TRANSACTION_STATUS_NO_RECORD_FOUND:
-		return protocol.REQUEST_STATUS_BAD_REQUEST
+		return protocol.REQUEST_STATUS_NOT_FOUND
 	case protocol.TRANSACTION_STATUS_REJECTED_UNSUPPORTED_VERSION:
 		return protocol.REQUEST_STATUS_BAD_REQUEST
 	case protocol.TRANSACTION_STATUS_REJECTED_VIRTUAL_CHAIN_MISMATCH:

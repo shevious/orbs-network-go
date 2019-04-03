@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package e2e
 
 import (
@@ -20,6 +26,7 @@ import (
 )
 
 type E2EConfig struct {
+	virtualChainId   uint32
 	bootstrap        bool
 	baseUrl          string
 	stressTest       StressTestConfig
@@ -33,7 +40,6 @@ type StressTestConfig struct {
 	targetTPS             float64
 }
 
-const VITRUAL_CHAIN_ID = 42
 const START_HTTP_PORT = 8090
 
 type harness struct {
@@ -41,8 +47,10 @@ type harness struct {
 }
 
 func newHarness() *harness {
+	config := getConfig()
+
 	return &harness{
-		client: orbsClient.NewClient(getConfig().baseUrl, VITRUAL_CHAIN_ID, codec.NETWORK_TYPE_TEST_NET),
+		client: orbsClient.NewClient(config.baseUrl, config.virtualChainId, codec.NETWORK_TYPE_TEST_NET),
 	}
 }
 
@@ -124,6 +132,20 @@ func (h *harness) getMetrics() metrics {
 	return m
 }
 
+// TODO remove Eventually loop once node can handle requests at block height 0
+func (h *harness) eventuallyDeploy(t *testing.T, keyPair *keys.Ed25519KeyPair, contractName string, contractBytes []byte) {
+	var dcExResult codec.ExecutionResult
+	var dcTxStatus codec.TransactionStatus
+	var dcErr error
+	require.True(t, test.Eventually(20*time.Second, func() bool {
+		dcExResult, dcTxStatus, dcErr = h.deployNativeContract(keyPair, contractName, contractBytes)
+		return dcErr == nil &&
+			dcTxStatus == codec.TRANSACTION_STATUS_COMMITTED &&
+			dcExResult == codec.EXECUTION_RESULT_SUCCESS
+	}), "expected contract to deploy successfully within 20 seconds, got error=%s, status=%s, execution result=%s", dcErr, dcTxStatus, dcExResult)
+
+}
+
 func (h *harness) waitUntilTransactionPoolIsReady(t *testing.T) {
 	require.True(t, test.Eventually(3*time.Second, func() bool { // 3 seconds to avoid jitter but it really shouldn't take that long
 		m := h.getMetrics()
@@ -143,6 +165,12 @@ func printTestTime(t *testing.T, msg string, last *time.Time) {
 }
 
 func getConfig() E2EConfig {
+	virtualChainId := uint32(42)
+
+	if vcId, err := strconv.ParseUint(os.Getenv("VCHAIN"), 10, 0); err == nil {
+		virtualChainId = uint32(vcId)
+	}
+
 	shouldBootstrap := len(os.Getenv("API_ENDPOINT")) == 0
 	baseUrl := fmt.Sprintf("http://localhost:%d", START_HTTP_PORT+2) // 8080 is leader, 8082 is node-3
 
@@ -166,14 +194,15 @@ func getConfig() E2EConfig {
 	}
 
 	return E2EConfig{
-		shouldBootstrap,
-		baseUrl,
-		StressTestConfig{
-			stressTestEnabled,
-			stressTestNumberOfTransactions,
-			stressTestFailureRate,
-			stressTestTargetTPS,
+		virtualChainId: virtualChainId,
+		bootstrap:      shouldBootstrap,
+		baseUrl:        baseUrl,
+		stressTest: StressTestConfig{
+			enabled:               stressTestEnabled,
+			numberOfTransactions:  stressTestNumberOfTransactions,
+			acceptableFailureRate: stressTestFailureRate,
+			targetTPS:             stressTestTargetTPS,
 		},
-		ethereumEndpoint,
+		ethereumEndpoint: ethereumEndpoint,
 	}
 }

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -7,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -34,12 +39,11 @@ type Fataler interface {
 
 type ErrorTracker interface {
 	HasErrors() bool
-	GetUnexpectedErrors() []string
 }
 
 func RequireNoUnexpectedErrors(f Fataler, errorTracker ErrorTracker) {
 	if errorTracker.HasErrors() {
-		f.Fatal("Encountered unexpected errors:\n\t", strings.Join(errorTracker.GetUnexpectedErrors(), "\n\t"))
+		f.Fatal("Test failed; encountered unexpected errors")
 	}
 }
 
@@ -48,7 +52,7 @@ type transactionStatuser interface {
 	TransactionReceipt() *protocol.TransactionReceipt
 }
 
-func RequireSuccess(t *testing.T, tx transactionStatuser, msg string, args ...interface{}) {
+func RequireSuccess(t testing.TB, tx transactionStatuser, msg string, args ...interface{}) {
 	message := fmt.Sprintf(msg, args...)
 	require.EqualValues(t, protocol.TRANSACTION_STATUS_COMMITTED.String(), tx.TransactionStatus().String(), msg)
 	require.Equal(t, protocol.EXECUTION_RESULT_SUCCESS.String(), tx.TransactionReceipt().ExecutionResult().String(), message)

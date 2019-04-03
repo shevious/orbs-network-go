@@ -1,6 +1,13 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package memory
 
 import (
+	"fmt"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
 	"github.com/orbs-network/orbs-network-go/services/blockstorage/adapter"
@@ -37,7 +44,7 @@ func NewBlockPersistence(parent log.BasicLogger, metricFactory metric.Factory, p
 	logger := parent.WithTags(log.String("adapter", "block-storage"))
 	p := &InMemoryBlockPersistence{
 		Logger:     logger,
-		metrics:    &memMetrics{size: metricFactory.NewGauge("BlockStorage.InMemoryBlockPersistence.SizeInBytes")},
+		metrics:    &memMetrics{size: metricFactory.NewGauge("BlockStorage.InMemoryBlockPersistenceSize.Bytes")},
 		tracker:    synchronization.NewBlockTracker(logger, uint64(len(preloadedBlocks)), 5),
 		blockChain: aChainOfBlocks{blocks: preloadedBlocks},
 	}
@@ -68,21 +75,25 @@ func (bp *InMemoryBlockPersistence) GetLastBlockHeight() (primitives.BlockHeight
 	return primitives.BlockHeight(len(bp.blockChain.blocks)), nil
 }
 
-func (bp *InMemoryBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) error {
+func (bp *InMemoryBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) (bool, error) {
 
 	added, err := bp.validateAndAddNextBlock(blockPair)
 	if err != nil || !added {
-		return err
+		return added, err
 	}
 
 	bp.metrics.size.Add(sizeOfBlock(blockPair))
 
-	return nil
+	return added, nil
 }
 
 func (bp *InMemoryBlockPersistence) validateAndAddNextBlock(blockPair *protocol.BlockPairContainer) (bool, error) {
 	bp.blockChain.Lock()
 	defer bp.blockChain.Unlock()
+
+	if !(blockPair.ResultsBlock.BlockProof.IsTypeBenchmarkConsensus() || blockPair.ResultsBlock.BlockProof.IsTypeLeanHelix()) {
+		return false, errors.Errorf("block persistence tried to write block with invalid proof type: %s", blockPair.ResultsBlock.BlockProof)
+	}
 
 	if primitives.BlockHeight(len(bp.blockChain.blocks))+1 < blockPair.TransactionsBlock.Header.BlockHeight() {
 		return false, errors.Errorf("block persistence tried to write next block with height %d when %d exist", blockPair.TransactionsBlock.Header.BlockHeight(), len(bp.blockChain.blocks))
@@ -90,6 +101,7 @@ func (bp *InMemoryBlockPersistence) validateAndAddNextBlock(blockPair *protocol.
 
 	if primitives.BlockHeight(len(bp.blockChain.blocks))+1 > blockPair.TransactionsBlock.Header.BlockHeight() {
 		bp.Logger.Info("block persistence ignoring write next block. incorrect height", log.Uint64("incoming-block-height", uint64(blockPair.TransactionsBlock.Header.BlockHeight())), log.BlockHeight(primitives.BlockHeight(len(bp.blockChain.blocks))))
+		// TODO(v1): since we're skipping the add, byte-compare the block header to make sure we don't have a fork
 		return false, nil
 	}
 	bp.blockChain.blocks = append(bp.blockChain.blocks, blockPair)
@@ -158,6 +170,10 @@ func (bp *InMemoryBlockPersistence) ScanBlocks(from primitives.BlockHeight, page
 
 	allBlocks := bp.blockChain.blocks
 	allBlocksLength := primitives.BlockHeight(len(allBlocks))
+
+	if allBlocksLength < from || from == 0 {
+		return fmt.Errorf("requested unknown block height %d. current height is %d", from, allBlocksLength)
+	}
 
 	wantsMore := true
 	for from <= allBlocksLength && wantsMore {

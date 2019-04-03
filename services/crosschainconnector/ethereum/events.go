@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package ethereum
 
 import (
@@ -7,32 +13,33 @@ import (
 )
 
 func repackEventABIWithTopics(eventABI abi.Event, log *adapter.TransactionLog) (res []byte, err error) {
-	curDataIndex := 0
-	curTopicIndex := 0
+	topicIndex := 0
 	if !eventABI.Anonymous {
-		curTopicIndex = 1
+		topicIndex = 1
 	}
+
+	nonIndexedData, err := eventABI.Inputs.NonIndexed().UnpackValues(log.Data)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed unpacking non-indexed values: %v", nonIndexedData)
+	}
+
+	var unpacked []interface{}
 
 	for _, arg := range eventABI.Inputs {
 		if arg.Indexed {
-
-			if curTopicIndex >= len(log.PackedTopics) {
-				return nil, errors.Errorf("num topics %d does not match total inputs %d minus %d non indexed", len(log.PackedTopics), len(eventABI.Inputs), eventABI.Inputs.LengthNonIndexed())
-			}
-			res = append(res, log.PackedTopics[curTopicIndex]...)
-			curTopicIndex++
-
-		} else {
-
-			b, err := log.PackedDataArgumentAt(curDataIndex)
+			arg.Indexed = false
+			v, err := abi.Arguments{arg}.UnpackValues(log.PackedTopics[topicIndex])
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "failed unpacking indexed value: %v", log.PackedTopics[topicIndex])
 			}
-			res = append(res, b...)
-			curDataIndex++
-
+			unpacked = append(unpacked, v[0])
+			topicIndex++
 		}
 	}
 
-	return
+	for _, data := range nonIndexedData {
+		unpacked = append(unpacked, data)
+	}
+
+	return eventABI.Inputs.Pack(unpacked...)
 }

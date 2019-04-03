@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package virtualmachine
 
 import (
@@ -8,6 +14,13 @@ import (
 
 func (s *service) verifyTransactionSignatures(signedTransactions []*protocol.SignedTransaction, resultStatuses []protocol.TransactionStatus) {
 	for i, signedTransaction := range signedTransactions {
+
+		// skip transactions that already failed due to different reasons
+		if resultStatuses[i] != protocol.TRANSACTION_STATUS_RESERVED {
+			continue
+		}
+
+		// check transaction signature
 		switch signedTransaction.Transaction().Signer().Scheme() {
 		case protocol.SIGNER_SCHEME_EDDSA:
 			if verifyEd25519Signer(signedTransaction) {
@@ -18,6 +31,7 @@ func (s *service) verifyTransactionSignatures(signedTransactions []*protocol.Sig
 		default:
 			resultStatuses[i] = protocol.TRANSACTION_STATUS_REJECTED_UNKNOWN_SIGNER_SCHEME
 		}
+
 	}
 }
 

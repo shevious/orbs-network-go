@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -11,7 +17,7 @@ import (
 
 func TestValidateBlockWithValidProtocolVersion(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncBroadcast(1).
 			withValidateConsensusAlgos(1).
 			start(ctx)
@@ -24,7 +30,7 @@ func TestValidateBlockWithValidProtocolVersion(t *testing.T) {
 
 func TestValidateBlockWithInvalidProtocolVersion(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().withSyncBroadcast(1).start(ctx)
+		harness := newBlockStorageHarness(t).allowingErrorsMatching("protocol version mismatch in.*").withSyncBroadcast(1).start(ctx)
 		block := builders.BlockPair().Build()
 
 		block.TransactionsBlock.Header.MutateProtocolVersion(998)
@@ -49,7 +55,7 @@ func TestValidateBlockWithInvalidProtocolVersion(t *testing.T) {
 
 func TestValidateBlockWithValidHeight(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncBroadcast(1).
 			withCommitStateDiff(1).
 			withValidateConsensusAlgos(1).
@@ -66,7 +72,7 @@ func TestValidateBlockWithValidHeight(t *testing.T) {
 
 func TestValidateBlockWithInvalidHeight(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncBroadcast(1).
 			withCommitStateDiff(1).
 			withValidateConsensusAlgos(1).

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -14,7 +20,6 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/stretchr/testify/require"
-	"os"
 	"testing"
 	"time"
 )
@@ -56,7 +61,7 @@ func txInputs(cfg config.ConsensusContextConfig) *services.ValidateTransactionsB
 }
 
 func TestValidateTransactionsBlockOnValidBlock(t *testing.T) {
-	log := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+	log := log.DefaultTestingLogger(t)
 	metricFactory := metric.NewRegistry()
 	cfg := config.ForConsensusContextTests(nil)
 	txPool := &services.MockTransactionPool{}
@@ -123,7 +128,7 @@ func rxInputs(cfg config.ConsensusContextConfig) *services.ValidateResultsBlockI
 }
 
 func TestValidateResultsBlockOnValidBlock(t *testing.T) {
-	log := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+	log := log.DefaultTestingLogger(t)
 	metricFactory := metric.NewRegistry()
 	cfg := config.ForConsensusContextTests(nil)
 	txPool := &services.MockTransactionPool{}

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package builders
 
 import (
@@ -88,4 +94,9 @@ func (q *QueryBuilder) WithAmountAndTargetAddress(amount uint64, targetAddress [
 
 func (q *QueryBuilder) WithTargetAddress(targetAddress []byte) *QueryBuilder {
 	return q.WithArgs(targetAddress)
+}
+
+func (q *QueryBuilder) WithVirtualChainId(virtualChainId primitives.VirtualChainId) *QueryBuilder {
+	q.builder.Query.VirtualChainId = virtualChainId
+	return q
 }

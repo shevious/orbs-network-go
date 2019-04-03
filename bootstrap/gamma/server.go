@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package gamma
 
 import (
@@ -16,10 +22,10 @@ type GammaServer struct {
 	Logger       log.BasicLogger
 }
 
-func StartGammaServer(serverAddress string, profiling bool, blocking bool) *GammaServer {
+func StartGammaServer(serverAddress string, profiling bool, overrideConfigJson string, blocking bool) *GammaServer {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	testLogger := log.GetLogger().
+	rootLogger := log.GetLogger().
 		WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter())).
 		WithFilters(
 			//TODO(https://github.com/orbs-network/orbs-network-go/issues/585) what do we really want to output to the gamma server log? maybe some meaningful data for our users?
@@ -29,17 +35,17 @@ func StartGammaServer(serverAddress string, profiling bool, blocking bool) *Gamm
 			log.IgnoreMessagesMatching("no responses received"),
 		)
 
-	network := NewDevelopmentNetwork(ctx, testLogger)
-	testLogger.Info("finished creating development network")
+	network := NewDevelopmentNetwork(ctx, rootLogger, overrideConfigJson)
+	rootLogger.Info("finished creating development network")
 
 	httpServer := httpserver.NewHttpServer(httpserver.NewServerConfig(serverAddress, profiling),
-		testLogger, network.PublicApi(0), network.MetricRegistry(0))
+		rootLogger, network.PublicApi(0), network.MetricRegistry(0))
 
 	s := &GammaServer{
 		ctxCancel:    cancel,
 		shutdownCond: sync.NewCond(&sync.Mutex{}),
 		httpServer:   httpServer,
-		Logger:       testLogger,
+		Logger:       rootLogger,
 	}
 
 	if blocking {

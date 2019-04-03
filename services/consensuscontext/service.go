@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package consensuscontext
 
 import (
@@ -15,16 +21,18 @@ import (
 var LogTag = log.Service("consensus-context")
 
 type metrics struct {
-	createTxBlockTime      *metric.Histogram
-	createResultsBlockTime *metric.Histogram
-	transactionsRate       *metric.Rate
+	createTxBlockTime                         *metric.Histogram
+	createResultsBlockTime                    *metric.Histogram
+	processTransactionsSeInCreateResultsBlock *metric.Histogram
+	transactionsRate                          *metric.Rate
 }
 
 func newMetrics(factory metric.Factory) *metrics {
 	return &metrics{
-		createTxBlockTime:      factory.NewLatency("ConsensusContext.CreateTransactionsBlockTime", 10*time.Second),
-		createResultsBlockTime: factory.NewLatency("ConsensusContext.CreateResultsBlockTime", 10*time.Second),
-		transactionsRate:       factory.NewRate("ConsensusContext.TransactionsPerSecond"),
+		createTxBlockTime:                         factory.NewLatency("ConsensusContext.CreateTransactionsBlockTime.Millis", 10*time.Second),
+		createResultsBlockTime:                    factory.NewLatency("ConsensusContext.CreateResultsBlockTime.Millis", 10*time.Second),
+		processTransactionsSeInCreateResultsBlock: factory.NewLatency("ConsensusContext.ProcessTransactionsSetInCreateResultsBlock.Millis", 10*time.Second),
+		transactionsRate:                          factory.NewRate("ConsensusContext.TransactionsEnteringBlock.PerSecond"),
 	}
 }
 

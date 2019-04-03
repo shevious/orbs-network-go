@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package synchronization_test
 
 import (
@@ -5,7 +11,6 @@ import (
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/synchronization"
 	"github.com/stretchr/testify/require"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -28,34 +33,48 @@ func mockLogger() *collector {
 	return c
 }
 
-func getExpected(startTime, endTime time.Time, tickTime time.Duration) uint32 {
-	duration := endTime.Sub(startTime)
-	expected := uint32((duration.Seconds() * 1000) / (tickTime.Seconds() * 1000))
-	return expected
-}
-
 func TestPeriodicalTriggerStartsOk(t *testing.T) {
 	logger := mockLogger()
-	var x uint32
-	start := time.Now()
-	tickTime := 5 * time.Millisecond
-	p := synchronization.NewPeriodicalTrigger(context.Background(), tickTime, logger, func() { atomic.AddUint32(&x, 1) }, nil)
-	time.Sleep(time.Millisecond * 30)
-	expected := getExpected(start, time.Now(), tickTime)
-	require.True(t, expected/2 < atomic.LoadUint32(&x), "expected more than %d ticks, but got %d", expected/2, atomic.LoadUint32(&x))
+	fromTrigger := make(chan struct{})
+	stop := make(chan struct{})
+	trigger := func() {
+		select {
+		case fromTrigger <- struct{}{}:
+		case <-stop:
+			return
+		}
+	}
+	tickTime := time.Microsecond
+	p := synchronization.NewPeriodicalTrigger(context.Background(), tickTime, logger, trigger, nil)
+
+	<-fromTrigger // test will block if the trigger did not happen
+
+	close(stop)
 	p.Stop()
 }
 
 func TestTriggerInternalMetrics(t *testing.T) {
 	logger := mockLogger()
-	var x uint32
-	start := time.Now()
-	tickTime := 5 * time.Millisecond
-	p := synchronization.NewPeriodicalTrigger(context.Background(), tickTime, logger, func() { atomic.AddUint32(&x, 1) }, nil)
-	time.Sleep(time.Millisecond * 30)
-	expected := getExpected(start, time.Now(), tickTime)
-	require.True(t, expected/2 < atomic.LoadUint32(&x), "expected more than %d ticks, but got %d", expected/2, atomic.LoadUint32(&x))
-	require.True(t, uint64(expected/2) < p.TimesTriggered(), "expected more than %d ticks, but got %d (metric)", expected/2, p.TimesTriggered())
+	fromTrigger := make(chan struct{})
+	stop := make(chan struct{})
+	trigger := func() {
+		select {
+		case fromTrigger <- struct{}{}:
+		case <-stop:
+			return
+		}
+	}
+	tickTime := time.Microsecond
+	p := synchronization.NewPeriodicalTrigger(context.Background(), tickTime, logger, trigger, nil)
+
+	// wait for three triggers
+	for i := 0; i < 3; i++ {
+		<-fromTrigger
+	}
+
+	time.Sleep(time.Millisecond) // yield
+	require.EqualValues(t, 3, p.TimesTriggered(), "expected 3 triggers but got %d (metric)", p.TimesTriggered())
+	close(stop)
 	p.Stop()
 }
 
@@ -129,7 +148,6 @@ func TestPeriodicalTriggerRunsOnStopAction(t *testing.T) {
 }
 
 func TestPeriodicalTriggerKeepsGoingOnPanic(t *testing.T) {
-	t.Skip("LongLived is broken, try again when its fixed")
 	logger := mockLogger()
 	x := 0
 	p := synchronization.NewPeriodicalTrigger(context.Background(),
@@ -140,7 +158,13 @@ func TestPeriodicalTriggerKeepsGoingOnPanic(t *testing.T) {
 			panic("we should not see this other than the logs")
 		},
 		nil)
-	time.Sleep(5 * time.Millisecond)
+
+	// more than one error means more than one panic means it recovers correctly
+	for i := 0; i < 2; i++ {
+		<-logger.errors
+	}
+
 	p.Stop()
-	require.True(t, x > 1, "expected trigger to have ticked more than once (even though it panics) %d", x)
+
+	require.True(t, x > 1, "expected trigger to have ticked more than once (even though it panics) but it ticked %d", x)
 }

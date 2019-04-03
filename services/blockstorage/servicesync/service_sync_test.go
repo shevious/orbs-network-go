@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package servicesync
 
 import (
@@ -32,7 +38,7 @@ func TestSyncLoop(t *testing.T) {
 		}).Times(5)
 
 		// run sync loop
-		syncedHeight, err := syncToTopBlock(ctx, sourceMock, committerMock, log.GetLogger())
+		syncedHeight, err := syncToTopBlock(ctx, sourceMock, committerMock, log.DefaultTestingLogger(t))
 		require.NoError(t, err, "expected syncToTopBlock to execute without error")
 		require.EqualValues(t, 4, committerHeight, "expected syncToTopBlock to advance committer to source height")
 		require.True(t, committerHeight == syncedHeight, "expected syncToTopBlock to return the current block height")
@@ -49,7 +55,9 @@ func TestSyncInitialState(t *testing.T) {
 
 	test.WithContext(func(ctx context.Context) {
 		// Set up block source mock
-		sourceTracker := synchronization.NewBlockTracker(log.GetLogger(), 3, 10)
+		logger := log.DefaultTestingLogger(t)
+
+		sourceTracker := synchronization.NewBlockTracker(logger, 3, 10)
 		sourceMock := newBlockSourceMock(3)
 		sourceMock.When("GetLastBlock").Times(2)
 		sourceMock.When("GetBlockTracker").Return(sourceTracker, nil).AtLeast(0)
@@ -58,7 +66,7 @@ func TestSyncInitialState(t *testing.T) {
 		// Set up target mock
 		committerMock := &blockPairCommitterMock{}
 		targetCurrentHeight := primitives.BlockHeight(0)
-		targetTracker := synchronization.NewBlockTracker(log.GetLogger(), 0, 10)
+		targetTracker := synchronization.NewBlockTracker(logger, 0, 10)
 		committerMock.When("commitBlockPair", mock.Any, mock.Any).Call(func(ctx context.Context, committedBlockPair *protocol.BlockPairContainer) (primitives.BlockHeight, error) {
 			if committedBlockPair.TransactionsBlock.Header.BlockHeight() == targetCurrentHeight+1 {
 				targetCurrentHeight++
@@ -67,7 +75,7 @@ func TestSyncInitialState(t *testing.T) {
 			return targetCurrentHeight + 1, nil
 		}).Times(5)
 
-		NewServiceBlockSync(ctx, log.GetLogger(), sourceMock, committerMock)
+		NewServiceBlockSync(ctx, logger, sourceMock, committerMock)
 
 		// Wait for first sync
 		err := targetTracker.WaitForBlock(ctx, 3)

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package gossip
 
 import (
@@ -35,8 +41,9 @@ func (s *service) receivedLeanHelixMessage(ctx context.Context, header *gossipme
 
 func (s *service) SendLeanHelixMessage(ctx context.Context, input *gossiptopics.LeanHelixInput) (*gossiptopics.EmptyOutput, error) {
 	header := (&gossipmessages.HeaderBuilder{
-		Topic:         gossipmessages.HEADER_TOPIC_LEAN_HELIX,
-		RecipientMode: gossipmessages.RECIPIENT_LIST_MODE_BROADCAST,
+		Topic:          gossipmessages.HEADER_TOPIC_LEAN_HELIX,
+		RecipientMode:  gossipmessages.RECIPIENT_LIST_MODE_BROADCAST,
+		VirtualChainId: s.config.VirtualChainId(),
 	}).Build()
 
 	payloads, err := codec.EncodeLeanHelixMessage(header, input.Message)

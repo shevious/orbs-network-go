@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -15,7 +21,7 @@ import (
 
 func TestProcessQuery_WhenContractNotDeployed(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, errors.New("not deployed"), uint32(0))
 
@@ -23,9 +29,9 @@ func TestProcessQuery_WhenContractNotDeployed(t *testing.T) {
 		h.expectNativeContractMethodNotCalled("Contract1", "method1")
 
 		result, outputArgs, refHeight, _, err := h.processQuery(ctx, "Contract1", "method1")
-		require.Error(t, err, "run local method should fail")
-		require.Equal(t, protocol.EXECUTION_RESULT_ERROR_CONTRACT_NOT_DEPLOYED, result, "run local method should return not deployed")
-		require.Equal(t, []byte{}, outputArgs, "run local method should return matching output args")
+		require.Error(t, err, "process query should fail")
+		require.Equal(t, protocol.EXECUTION_RESULT_ERROR_CONTRACT_NOT_DEPLOYED, result, "process query should return not deployed")
+		require.Equal(t, []byte{}, outputArgs, "process query should return matching output args")
 		require.EqualValues(t, 12, refHeight)
 
 		h.verifySystemContractCalled(t)
@@ -36,7 +42,7 @@ func TestProcessQuery_WhenContractNotDeployed(t *testing.T) {
 
 func TestProcessTransactionSet_WhenContractNotDeployedAndNotPreBuiltNativeContract(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, errors.New("not deployed"), uint32(0))
 		h.expectNativeContractInfoRequested("Contract1", errors.New("not found"))
@@ -61,7 +67,7 @@ func TestProcessTransactionSet_WhenContractNotDeployedAndNotPreBuiltNativeContra
 
 func TestSdkService_CallMethodWhenContractNotDeployedAndNotPreBuiltNativeContract(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, nil, uint32(protocol.PROCESSOR_TYPE_NATIVE)) // assume all contracts are deployed
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, errors.New("not deployed"), uint32(0))
@@ -87,7 +93,7 @@ func TestSdkService_CallMethodWhenContractNotDeployedAndNotPreBuiltNativeContrac
 
 func TestAutoDeployPreBuiltNativeContractDuringProcessTransactionSet(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, errors.New("not deployed"), uint32(0))
 		h.expectNativeContractInfoRequested("Contract1", nil)
@@ -115,7 +121,7 @@ func TestAutoDeployPreBuiltNativeContractDuringProcessTransactionSet(t *testing.
 
 func TestFailingAutoDeployPreBuiltNativeContractDuringProcessTransactionSet(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		h.expectSystemContractCalled(deployments_systemcontract.CONTRACT_NAME, deployments_systemcontract.METHOD_GET_INFO, errors.New("not deployed"), uint32(0))
 		h.expectNativeContractInfoRequested("Contract1", nil)

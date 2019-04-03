@@ -1,27 +1,20 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package acceptance
 
 import (
 	"context"
-	"github.com/orbs-network/orbs-network-go/bootstrap/inmemory"
-	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
-	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
-	blockStorageAdapter "github.com/orbs-network/orbs-network-go/services/blockstorage/adapter/testkit"
-	ethereumAdapter "github.com/orbs-network/orbs-network-go/services/crosschainconnector/ethereum/adapter"
-	memoryGossip "github.com/orbs-network/orbs-network-go/services/gossip/adapter/memory"
-	gossipTestAdapter "github.com/orbs-network/orbs-network-go/services/gossip/adapter/testkit"
-	nativeProcessorAdapter "github.com/orbs-network/orbs-network-go/services/processor/native/adapter/fake"
-	harnessStateStorageAdapter "github.com/orbs-network/orbs-network-go/services/statestorage/adapter/testkit"
-	"github.com/orbs-network/orbs-network-go/synchronization"
+	"github.com/orbs-network/orbs-network-go/synchronization/supervised"
 	"github.com/orbs-network/orbs-network-go/test"
-	testKeys "github.com/orbs-network/orbs-network-go/test/crypto/keys"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/protocol/consensus"
-	"github.com/pkg/errors"
-	"math"
 	"math/rand"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -29,24 +22,29 @@ import (
 	"time"
 )
 
-var ENABLE_LEAN_HELIX_IN_ACCEPTANCE_TESTS = false
+const ENABLE_LEAN_HELIX_IN_ACCEPTANCE_TESTS = true
+const TEST_TIMEOUT_HARD_LIMIT = 20 * time.Second //TODO(v1) 10 seconds is infinity; reduce to 2 seconds when system is more stable (after we add feature of custom config per test)
+const DEFAULT_NODE_COUNT_FOR_ACCEPTANCE = 7
+const DEFAULT_ACCEPTANCE_MAX_TX_PER_BLOCK = 10
+const DEFAULT_ACCEPTANCE_REQUIRED_QUORUM_PERCENTAGE = 66
+const DEFAULT_ACCEPTANCE_VIRTUAL_CHAIN_ID = 42
 
 type networkHarnessBuilder struct {
-	tb                       testing.TB
 	numNodes                 int
 	consensusAlgos           []consensus.ConsensusAlgoType
 	testId                   string
-	setupFunc                func(ctx context.Context, network NetworkHarness)
+	setupFunc                func(ctx context.Context, network *NetworkHarness)
 	logFilters               []log.Filter
 	maxTxPerBlock            uint32
 	allowedErrors            []string
 	numOfNodesToStart        int
 	requiredQuorumPercentage uint32
+	blockChain               []*protocol.BlockPairContainer
+	virtualChainId           primitives.VirtualChainId
 }
 
-// TODO Make the "primary consensus algo" configurable https://tree.taiga.io/project/orbs-network/us/632
-func newHarness(tb testing.TB) *networkHarnessBuilder {
-	n := &networkHarnessBuilder{tb: tb, maxTxPerBlock: 30, requiredQuorumPercentage: 100}
+func newHarness() *networkHarnessBuilder {
+	n := &networkHarnessBuilder{maxTxPerBlock: DEFAULT_ACCEPTANCE_MAX_TX_PER_BLOCK, requiredQuorumPercentage: DEFAULT_ACCEPTANCE_REQUIRED_QUORUM_PERCENTAGE}
 
 	var algos []consensus.ConsensusAlgoType
 	if ENABLE_LEAN_HELIX_IN_ACCEPTANCE_TESTS {
@@ -55,11 +53,19 @@ func newHarness(tb testing.TB) *networkHarnessBuilder {
 		algos = []consensus.ConsensusAlgoType{consensus.CONSENSUS_ALGO_TYPE_BENCHMARK_CONSENSUS}
 	}
 
-	return n.
-		WithTestId(getCallerFuncName()).
-		WithNumNodes(4).
+	callerFuncName := getCallerFuncName(2)
+	if callerFuncName == "getStressTestHarness" {
+		callerFuncName = getCallerFuncName(3)
+	}
+
+	harness := n.
+		WithTestId(callerFuncName).
+		WithNumNodes(DEFAULT_NODE_COUNT_FOR_ACCEPTANCE).
 		WithConsensusAlgos(algos...).
+		WithVirtualChainId(DEFAULT_ACCEPTANCE_VIRTUAL_CHAIN_ID).
 		AllowingErrors("ValidateBlockProposal failed.*") // it is acceptable for validation to fail in one or more nodes, as long as f+1 nodes are in agreement on a block and even if they do not, a new leader should eventually be able to reach consensus on the block
+
+	return harness
 }
 
 func (b *networkHarnessBuilder) WithLogFilters(filters ...log.Filter) *networkHarnessBuilder {
@@ -68,8 +74,8 @@ func (b *networkHarnessBuilder) WithLogFilters(filters ...log.Filter) *networkHa
 }
 
 func (b *networkHarnessBuilder) WithTestId(testId string) *networkHarnessBuilder {
-	randNum := rand.Intn(1000000)
-	b.testId = "acceptance-" + testId + "-" + strconv.FormatInt(time.Now().Unix(), 10) + "-" + strconv.FormatInt(int64(randNum), 10)
+	randNum := rand.Intn(1000)
+	b.testId = "acc-" + testId + "-" + strconv.FormatInt(time.Now().Unix(), 10) + "-" + strconv.FormatInt(int64(randNum), 10)
 	return b
 }
 
@@ -84,7 +90,7 @@ func (b *networkHarnessBuilder) WithConsensusAlgos(algos ...consensus.ConsensusA
 }
 
 // setup runs when all adapters have been created but before the nodes are started
-func (b *networkHarnessBuilder) WithSetup(f func(ctx context.Context, network NetworkHarness)) *networkHarnessBuilder {
+func (b *networkHarnessBuilder) WithSetup(f func(ctx context.Context, network *NetworkHarness)) *networkHarnessBuilder {
 	b.setupFunc = f
 	return b
 }
@@ -99,68 +105,20 @@ func (b *networkHarnessBuilder) AllowingErrors(allowedErrors ...string) *network
 	return b
 }
 
-func (b *networkHarnessBuilder) Start(f func(ctx context.Context, network NetworkHarness)) {
-	b.StartWithRestart(func(ctx context.Context, network NetworkHarness, _ func() NetworkHarness) {
-		f(ctx, network)
-	})
-}
-
-func (b *networkHarnessBuilder) StartWithRestart(f func(ctx context.Context, network NetworkHarness, restartPreservingBlocks func() NetworkHarness)) {
+func (b *networkHarnessBuilder) Start(tb testing.TB, f func(tb testing.TB, ctx context.Context, network *NetworkHarness)) {
 	if b.numOfNodesToStart == 0 {
 		b.numOfNodesToStart = b.numNodes
 	}
 
 	for _, consensusAlgo := range b.consensusAlgos {
-
-		restartableTest := func(ctx context.Context) {
-			test.WithContextWithTimeout(15*time.Second, func(ctx context.Context) { //TODO(v1) 10 seconds is infinity; reduce to 2 seconds when system is more stable (after we add feature of custom config per test)
-				networkCtx, cancelNetwork := context.WithCancel(ctx)
-				testId := b.testId + "-" + consensusAlgo.String()
-				logger, errorRecorder := b.makeLogger(testId)
-				network := b.newAcceptanceTestNetwork(networkCtx, logger, consensusAlgo, nil)
-
-				logger.Info("acceptance network created")
-				defer printTestIdOnFailure(b.tb, testId)
-				defer dumpStateOnFailure(b.tb, network)
-				defer test.RequireNoUnexpectedErrors(b.tb, errorRecorder)
-
-				if b.setupFunc != nil {
-					b.setupFunc(networkCtx, network)
-				}
-
-				network.CreateAndStartNodes(networkCtx, b.numOfNodesToStart)
-				logger.Info("acceptance network started")
-
-				restart := func() NetworkHarness {
-					cancelNetwork()
-					network.Destroy()
-					time.Sleep(5 * time.Millisecond) // give context dependent goroutines 5 ms to terminate gracefully
-
-					// signal the old network to stop
-					networkCtx, cancelNetwork = context.WithCancel(ctx) // allocate new cancel func for new network
-					newNetwork := b.newAcceptanceTestNetwork(ctx, logger, consensusAlgo, extractBlocks(network.BlockPersistence(0)))
-					logger.Info("acceptance network re-created")
-
-					newNetwork.CreateAndStartNodes(networkCtx, b.numOfNodesToStart)
-					logger.Info("acceptance network re-started")
-
-					return newNetwork
-				}
-
-				logger.Info("acceptance network running test")
-				f(ctx, network, restart)
-				time.Sleep(5 * time.Millisecond) // give context dependent goroutines 5 ms to terminate gracefully
-			})
-		}
-
-		switch runner := b.tb.(type) {
+		switch runner := tb.(type) {
 		case *testing.T:
 			runner.Run(consensusAlgo.String(), func(t *testing.T) {
-				test.WithContextWithTimeout(15*time.Second, restartableTest)
+				b.runTest(t, consensusAlgo, f)
 			})
 		case *testing.B:
 			runner.Run(consensusAlgo.String(), func(t *testing.B) {
-				test.WithContextWithTimeout(15*time.Second, restartableTest)
+				b.runTest(t, consensusAlgo, f)
 			})
 		default:
 			panic("unexpected TB implementation")
@@ -168,35 +126,64 @@ func (b *networkHarnessBuilder) StartWithRestart(f func(ctx context.Context, net
 	}
 }
 
-func extractBlocks(blocks blockStorageAdapter.TamperingInMemoryBlockPersistence) []*protocol.BlockPairContainer {
-	lastBlock, err := blocks.GetLastBlock()
-	if err != nil {
-		panic(errors.Wrapf(err, "spawn network: failed reading block height"))
-	}
-	var blockPairs []*protocol.BlockPairContainer
-	pageSize := uint8(lastBlock.ResultsBlock.Header.BlockHeight())
-	err = blocks.ScanBlocks(1, pageSize, func(first primitives.BlockHeight, page []*protocol.BlockPairContainer) bool {
-		blockPairs = page // TODO should we copy the slice here to make sure both networks are isolated?
-		return false
+func (b *networkHarnessBuilder) runTest(tb testing.TB, consensusAlgo consensus.ConsensusAlgoType, f func(tb testing.TB, ctx context.Context, network *NetworkHarness)) {
+	testId := b.testId + "-" + toShortConsensusAlgoStr(consensusAlgo)
+	logger, testOutput := b.makeLogger(tb, testId)
+
+	supervised.Recover(logger, func() {
+		defer testOutput.TestTerminated() // this will suppress test failures from goroutines after test terminates
+		// TODO: if we experience flakiness during system shutdown move TestTerminated to be under test.WithContextWithTimeout
+
+		test.WithContextWithTimeout(TEST_TIMEOUT_HARD_LIMIT, func(ctx context.Context) {
+			network := newAcceptanceTestNetwork(ctx, logger, consensusAlgo, b.blockChain, b.numNodes, b.maxTxPerBlock, b.requiredQuorumPercentage, b.virtualChainId)
+
+			logger.Info("acceptance network created")
+			defer printTestIdOnFailure(tb, testId)
+			defer dumpStateOnFailure(tb, network)
+			defer test.RequireNoUnexpectedErrors(tb, testOutput)
+
+			if b.setupFunc != nil {
+				b.setupFunc(ctx, network)
+			}
+
+			network.CreateAndStartNodes(ctx, b.numOfNodesToStart)
+			logger.Info("acceptance network started")
+
+			logger.Info("acceptance network running test")
+			f(tb, ctx, network)
+		})
+
+		time.Sleep(10 * time.Millisecond) // give context dependent goroutines time to terminate gracefully
 	})
-	if err != nil {
-		panic(errors.Wrapf(err, "spawn network: failed extract blocks"))
-	}
-	return blockPairs
 }
 
-func (b *networkHarnessBuilder) makeLogger(testId string) (log.BasicLogger, test.ErrorTracker) {
-	errorRecorder := log.NewErrorRecordingOutput(b.allowedErrors)
+func toShortConsensusAlgoStr(algoType consensus.ConsensusAlgoType) string {
+	str := algoType.String()
+	if len(str) < 20 {
+		return str
+	}
+	return str[20:] // remove the "CONSENSUS_ALGO_TYPE_" prefix
+}
+
+func (b *networkHarnessBuilder) makeLogger(tb testing.TB, testId string) (log.BasicLogger, *log.TestOutput) {
+
+	testOutput := log.NewTestOutput(tb, log.NewHumanReadableFormatter())
+	for _, pattern := range b.allowedErrors {
+		testOutput.AllowErrorsMatching(pattern)
+	}
+
 	logger := log.GetLogger(
 		log.String("_test", "acceptance"),
-		log.String("_branch", os.Getenv("GIT_BRANCH")),
-		log.String("_commit", os.Getenv("GIT_COMMIT")),
 		log.String("_test-id", testId)).
-		WithOutput(b.makeFormattingOutput(testId), errorRecorder).
+		WithOutput(testOutput).
+		WithFilters(
+			log.IgnoreMessagesMatching("transport message received"),
+			log.IgnoreMessagesMatching("Metric recorded"),
+		).
 		WithFilters(b.logFilters...)
 	//WithFilters(log.Or(log.OnlyErrors(), log.OnlyCheckpoints(), log.OnlyMetrics()))
 
-	return logger, errorRecorder
+	return logger, testOutput
 }
 
 func (b *networkHarnessBuilder) WithNumRunningNodes(numNodes int) *networkHarnessBuilder {
@@ -209,89 +196,14 @@ func (b *networkHarnessBuilder) WithRequiredQuorumPercentage(percentage int) *ne
 	return b
 }
 
-func (b *networkHarnessBuilder) newAcceptanceTestNetwork(ctx context.Context, testLogger log.BasicLogger, consensusAlgo consensus.ConsensusAlgoType, preloadedBlocks []*protocol.BlockPairContainer) *networkHarness {
-
-	testLogger.Info("===========================================================================")
-	testLogger.Info("creating acceptance test network", log.String("consensus", consensusAlgo.String()), log.Int("num-nodes", b.numNodes))
-
-	leaderKeyPair := testKeys.EcdsaSecp256K1KeyPairForTests(0)
-
-	federationNodes := map[string]config.FederationNode{}
-	privateKeys := map[string]primitives.EcdsaSecp256K1PrivateKey{}
-	var nodeOrder []primitives.NodeAddress
-	for i := 0; i < int(b.numNodes); i++ {
-		nodeAddress := testKeys.EcdsaSecp256K1KeyPairForTests(i).NodeAddress()
-		federationNodes[nodeAddress.KeyForMap()] = config.NewHardCodedFederationNode(nodeAddress)
-		privateKeys[nodeAddress.KeyForMap()] = testKeys.EcdsaSecp256K1KeyPairForTests(i).PrivateKey()
-		nodeOrder = append(nodeOrder, nodeAddress)
-	}
-
-	cfgTemplate := config.ForAcceptanceTestNetwork(
-		federationNodes,
-		leaderKeyPair.NodeAddress(),
-		consensusAlgo,
-		b.maxTxPerBlock,
-		b.requiredQuorumPercentage,
-	)
-
-	sharedTamperingTransport := gossipTestAdapter.NewTamperingTransport(testLogger, memoryGossip.NewTransport(ctx, testLogger, federationNodes))
-	sharedCompiler := nativeProcessorAdapter.NewCompiler()
-	sharedEthereumSimulator := ethereumAdapter.NewEthereumSimulatorConnection(testLogger)
-
-	var tamperingBlockPersistences []blockStorageAdapter.TamperingInMemoryBlockPersistence
-	var dumpingStatePersistences []harnessStateStorageAdapter.DumpingStatePersistence
-	var transactionPoolTrackers []*synchronization.BlockTracker
-	var stateTrackers []*synchronization.BlockTracker
-
-	provider := func(idx int, nodeConfig config.NodeConfig, logger log.BasicLogger, metricRegistry metric.Registry) *inmemory.NodeDependencies {
-		tamperingBlockPersistence := blockStorageAdapter.NewBlockPersistence(logger, preloadedBlocks, metricRegistry)
-		dumpingStateStorage := harnessStateStorageAdapter.NewDumpingStatePersistence(metricRegistry)
-
-		txPoolHeightTracker := synchronization.NewBlockTracker(logger, 0, math.MaxUint16)
-		stateHeightTracker := synchronization.NewBlockTracker(logger, 0, math.MaxUint16)
-
-		tamperingBlockPersistences = append(tamperingBlockPersistences, tamperingBlockPersistence)
-		dumpingStatePersistences = append(dumpingStatePersistences, dumpingStateStorage)
-		transactionPoolTrackers = append(transactionPoolTrackers, txPoolHeightTracker)
-		stateTrackers = append(stateTrackers, stateHeightTracker)
-
-		return &inmemory.NodeDependencies{
-			BlockPersistence:                   tamperingBlockPersistence,
-			StatePersistence:                   dumpingStateStorage,
-			EtherConnection:                    sharedEthereumSimulator,
-			Compiler:                           sharedCompiler,
-			TransactionPoolBlockHeightReporter: txPoolHeightTracker,
-			StateBlockHeightReporter:           stateHeightTracker,
-		}
-	}
-
-	harness := &networkHarness{
-		Network:                            *inmemory.NewNetworkWithNumOfNodes(federationNodes, nodeOrder, privateKeys, testLogger, cfgTemplate, sharedTamperingTransport, provider),
-		tamperingTransport:                 sharedTamperingTransport,
-		ethereumConnection:                 sharedEthereumSimulator,
-		fakeCompiler:                       sharedCompiler,
-		tamperingBlockPersistences:         tamperingBlockPersistences,
-		dumpingStatePersistences:           dumpingStatePersistences,
-		stateBlockHeightTrackers:           stateTrackers,
-		transactionPoolBlockHeightTrackers: transactionPoolTrackers,
-	}
-
-	return harness // call harness.CreateAndStartNodes() to launch nodes in the network
+func (b *networkHarnessBuilder) WithInitialBlocks(blocks []*protocol.BlockPairContainer) *networkHarnessBuilder {
+	b.blockChain = blocks
+	return b
 }
 
-func (b *networkHarnessBuilder) makeFormattingOutput(testId string) log.Output {
-	var output log.Output
-	if os.Getenv("NO_LOG_STDOUT") == "true" {
-		logFile, err := os.OpenFile(config.GetProjectSourceRootPath()+"/_logs/acceptance/"+testId+".log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			panic(err)
-		}
-
-		output = log.NewFormattingOutput(logFile, log.NewJsonFormatter())
-	} else {
-		output = log.NewTestOutput(b.tb, log.NewHumanReadableFormatter())
-	}
-	return output
+func (b *networkHarnessBuilder) WithVirtualChainId(id primitives.VirtualChainId) *networkHarnessBuilder {
+	b.virtualChainId = id
+	return b
 }
 
 func printTestIdOnFailure(tb testing.TB, testId string) {
@@ -300,14 +212,14 @@ func printTestIdOnFailure(tb testing.TB, testId string) {
 	}
 }
 
-func dumpStateOnFailure(tb testing.TB, network NetworkHarness) {
+func dumpStateOnFailure(tb testing.TB, network *NetworkHarness) {
 	if tb.Failed() {
 		network.DumpState()
 	}
 }
 
-func getCallerFuncName() string {
-	pc, _, _, _ := runtime.Caller(2)
+func getCallerFuncName(skip int) string {
+	pc, _, _, _ := runtime.Caller(skip)
 	packageAndFuncName := runtime.FuncForPC(pc).Name()
 	parts := strings.Split(packageAndFuncName, ".")
 	return parts[len(parts)-1]

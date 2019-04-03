@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package internodesync
 
 import (
@@ -55,16 +61,6 @@ func newDefaultBlockSyncConfigForTests() *blockSyncConfigForTests {
 	}
 }
 
-func newBlockSyncConfigForTestsWithInfiniteTimeouts() *blockSyncConfigForTests {
-	return &blockSyncConfigForTests{
-		nodeAddress:      testKeys.EcdsaSecp256K1KeyPairForTests(1).NodeAddress(),
-		batchSize:        10,
-		noCommit:         3 * time.Hour,
-		collectResponses: 3 * time.Hour,
-		collectChunks:    3 * time.Hour,
-	}
-}
-
 type blockSyncHarness struct {
 	factory       *stateFactory
 	config        *blockSyncConfigForTests
@@ -75,6 +71,7 @@ type blockSyncHarness struct {
 }
 
 func newBlockSyncHarnessWithTimers(
+	logger log.BasicLogger,
 	createCollectTimeoutTimer func() *synchronization.Timer,
 	createNoCommitTimeoutTimer func() *synchronization.Timer,
 	createWaitForChunksTimeoutTimer func() *synchronization.Timer,
@@ -83,7 +80,6 @@ func newBlockSyncHarnessWithTimers(
 	cfg := newDefaultBlockSyncConfigForTests()
 	gossip := &gossiptopics.MockBlockSync{}
 	storage := &blockSyncStorageMock{}
-	logger := log.GetLogger()
 	conduit := make(blockSyncConduit)
 
 	metricFactory := metric.NewRegistry()
@@ -98,26 +94,31 @@ func newBlockSyncHarnessWithTimers(
 	}
 }
 
-func newBlockSyncHarness() *blockSyncHarness {
-	return newBlockSyncHarnessWithTimers(nil, nil, nil)
+func newBlockSyncHarness(logger log.BasicLogger) *blockSyncHarness {
+	return newBlockSyncHarnessWithTimers(logger, nil, nil, nil)
 }
 
-func newBlockSyncHarnessWithCollectResponsesTimer(createTimer func() *synchronization.Timer) *blockSyncHarness {
-	return newBlockSyncHarnessWithTimers(createTimer, nil, nil)
+func newBlockSyncHarnessWithCollectResponsesTimer(logger log.BasicLogger, createTimer func() *synchronization.Timer) *blockSyncHarness {
+	return newBlockSyncHarnessWithTimers(logger, createTimer, nil, nil)
 }
 
-func newBlockSyncHarnessWithManualNoCommitTimeoutTimer(createTimer func() *synchronization.Timer) *blockSyncHarness {
-	return newBlockSyncHarnessWithTimers(nil, createTimer, nil)
+func newBlockSyncHarnessWithManualNoCommitTimeoutTimer(logger log.BasicLogger, createTimer func() *synchronization.Timer) *blockSyncHarness {
+	return newBlockSyncHarnessWithTimers(logger, nil, createTimer, nil)
 }
 
-func newBlockSyncHarnessWithManualWaitForChunksTimeoutTimer(createTimer func() *synchronization.Timer) *blockSyncHarness {
-	return newBlockSyncHarnessWithTimers(nil, nil, createTimer)
+func newBlockSyncHarnessWithManualWaitForChunksTimeoutTimer(logger log.BasicLogger, createTimer func() *synchronization.Timer) *blockSyncHarness {
+	return newBlockSyncHarnessWithTimers(logger, nil, nil, createTimer)
 }
 
 func (h *blockSyncHarness) waitForShutdown(bs *BlockSync) bool {
 	return test.Eventually(test.EVENTUALLY_LOCAL_E2E_TIMEOUT, func() bool {
 		return bs.IsTerminated()
 	})
+}
+
+func (h *blockSyncHarness) withWaitForChunksTimeout(d time.Duration) *blockSyncHarness {
+	h.config.collectChunks = d
+	return h
 }
 
 func (h *blockSyncHarness) withNodeAddress(address primitives.NodeAddress) *blockSyncHarness {
@@ -131,7 +132,7 @@ func (h *blockSyncHarness) withBatchSize(size uint32) *blockSyncHarness {
 }
 
 func (h *blockSyncHarness) expectSyncOnStart() {
-	h.expectPreSynchronizationUpdateOfConsensusAlgos(10)
+	h.expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(10)
 	h.expectBroadcastOfBlockAvailabilityRequest()
 }
 
@@ -140,9 +141,9 @@ func (h *blockSyncHarness) eventuallyVerifyMocks(t *testing.T, times int) {
 	require.NoError(t, err)
 }
 
-func (h *blockSyncHarness) consistentlyVerifyMocks(t *testing.T, times int) {
+func (h *blockSyncHarness) consistentlyVerifyMocks(t *testing.T, times int, message string) {
 	err := test.ConsistentlyVerify(test.EVENTUALLY_ACCEPTANCE_TIMEOUT*time.Duration(times), h.gossip, h.storage)
-	require.NoError(t, err)
+	require.NoError(t, err, message)
 }
 
 func (h *blockSyncHarness) verifyMocks(t *testing.T) {
@@ -171,8 +172,8 @@ func (h *blockSyncHarness) expectLastCommittedBlockHeightQueryFromStorage(expect
 	h.storage.When("GetLastCommittedBlockHeight", mock.Any, mock.Any).Return(out, nil).Times(1)
 }
 
-func (h *blockSyncHarness) expectPreSynchronizationUpdateOfConsensusAlgos(expectedHeight int) {
-	h.storage.When("UpdateConsensusAlgosAboutLatestCommittedBlock", mock.Any).Times(1)
+func (h *blockSyncHarness) expectUpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence(expectedHeight int) {
+	h.storage.When("UpdateConsensusAlgosAboutLastCommittedBlockInLocalPersistence", mock.Any).Times(1)
 	h.expectLastCommittedBlockHeightQueryFromStorage(expectedHeight)
 }
 

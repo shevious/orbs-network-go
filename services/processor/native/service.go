@@ -1,13 +1,21 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package native
 
 import (
 	"context"
 	"fmt"
 	sdkContext "github.com/orbs-network/orbs-contract-sdk/go/context"
+	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
 	"github.com/orbs-network/orbs-network-go/instrumentation/trace"
 	"github.com/orbs-network/orbs-network-go/services/processor/native/adapter"
+	"github.com/orbs-network/orbs-network-go/services/processor/native/sanitizer"
 	"github.com/orbs-network/orbs-network-go/services/processor/native/types"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
@@ -20,8 +28,10 @@ var LogTag = log.Service("processor-native")
 
 type service struct {
 	logger     log.BasicLogger
+	config     config.NativeProcessorConfig
 	compiler   adapter.Compiler
 	sdkHandler handlers.ContractSdkCallHandler
+	sanitizer  *sanitizer.Sanitizer
 
 	contracts struct {
 		sync.RWMutex
@@ -40,18 +50,21 @@ type metrics struct {
 
 func getMetrics(m metric.Factory) *metrics {
 	return &metrics{
-		deployedContracts:       m.NewGauge("Processor.Native.DeployedContractsNumber"),
-		processCallTime:         m.NewLatency("Processor.Native.ProcessCallTime", 10*time.Second),
-		contractCompilationTime: m.NewLatency("Processor.Native.ContractCompilationTime", 10*time.Second),
+		deployedContracts:       m.NewGauge("Processor.Native.DeployedContracts.Count"),
+		processCallTime:         m.NewLatency("Processor.Native.ProcessCallTime.Millis", 10*time.Second),
+		contractCompilationTime: m.NewLatency("Processor.Native.ContractCompilationTime.Millis", 10*time.Second),
 	}
 }
 
-func NewNativeProcessor(compiler adapter.Compiler, logger log.BasicLogger, metricFactory metric.Factory) services.Processor {
+func NewNativeProcessor(compiler adapter.Compiler, config config.NativeProcessorConfig, logger log.BasicLogger, metricFactory metric.Factory) services.Processor {
 	s := &service{
 		compiler: compiler,
+		config:   config,
 		logger:   logger.WithTags(LogTag),
 		metrics:  getMetrics(metricFactory),
 	}
+
+	s.sanitizer = s.createSanitizer()
 
 	s.contracts.instances = initializePreBuiltContractInstances()
 	s.contracts.deployedCache = make(map[string]*sdkContext.ContractInfo)
@@ -103,7 +116,7 @@ func (s *service) ProcessCall(ctx context.Context, input *services.ProcessCallIn
 		outputArgs = (&protocol.ArgumentArrayBuilder{}).Build()
 	}
 	if err != nil {
-		logger.Info("contract execution failed", log.Error(err))
+		logger.Info("contract execution failed", log.Stringable("contract", input.ContractName), log.Stringable("method", input.MethodName), log.Error(err))
 
 		return &services.ProcessCallOutput{
 			// TODO(https://github.com/orbs-network/orbs-spec/issues/97): do we need to remove system errors from OutputArguments?
@@ -115,7 +128,7 @@ func (s *service) ProcessCall(ctx context.Context, input *services.ProcessCallIn
 	// result
 	callResult := protocol.EXECUTION_RESULT_SUCCESS
 	if contractErr != nil {
-		logger.Info("contract returned error", log.Error(contractErr))
+		logger.Info("contract returned error", log.Stringable("contract", input.ContractName), log.Stringable("method", input.MethodName), log.Error(contractErr))
 
 		callResult = protocol.EXECUTION_RESULT_ERROR_SMART_CONTRACT
 	}

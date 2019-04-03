@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
 	"github.com/orbs-network/orbs-network-go/config"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/stretchr/testify/require"
 	"os/exec"
 	"path/filepath"
@@ -49,20 +56,21 @@ func TestAdvisoryLock_AdapterCanReleaseLock(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping Integration tests in short mode")
 	}
+
 	c := newTempFileConfig()
 	defer c.cleanDir()
 
-	err := lockAndRelease(c)
+	err := lockAndRelease(t, c)
 	require.NoError(t, err, "should succeed in creating an adapter for a non-existing temp file")
 
 	time.Sleep(500 * time.Millisecond)
 
-	err = lockAndRelease(c)
+	err = lockAndRelease(t, c)
 	require.NoError(t, err, "should succeed in creating a second adapter for same file after closing first adapter")
 }
 
-func lockAndRelease(c config.FilesystemBlockPersistenceConfig) error {
-	_, cancel, err := NewFilesystemAdapterDriver(c)
+func lockAndRelease(tb testing.TB, c config.FilesystemBlockPersistenceConfig) error {
+	_, cancel, err := NewFilesystemAdapterDriver(log.DefaultTestingLogger(tb), c)
 	if err != nil {
 		return err
 	}

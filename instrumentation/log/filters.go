@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package log
 
 import (
@@ -6,6 +12,12 @@ import (
 
 type Filter interface {
 	Allows(level string, message string, fields []*Field) bool
+}
+
+type ConditionalFilter interface {
+	Filter
+	On()
+	Off()
 }
 
 func ExcludeEntryPoint(name string) Filter {
@@ -37,11 +49,18 @@ func MatchField(f *Field) Filter {
 }
 
 func IgnoreMessagesMatching(pattern string) Filter {
-	return &messageRegexp{pattern: pattern}
+	compiledPattern, _ := regexp.Compile(pattern)
+	return &messageRegexp{
+		pattern:         pattern,
+		compiledPattern: compiledPattern,
+	}
 }
 
 func IgnoreErrorsMatching(pattern string) Filter {
-	return &errorRegexp{pattern: pattern}
+	compiledPattern, _ := regexp.Compile(pattern)
+	return &errorRegexp{pattern: pattern,
+		compiledPattern: compiledPattern,
+	}
 }
 
 func DiscardAll() Filter {
@@ -53,14 +72,17 @@ func OnlyMetrics() Filter {
 }
 
 type errorRegexp struct {
-	pattern string
+	pattern         string
+	compiledPattern *regexp.Regexp
 }
 
 func (f *errorRegexp) Allows(level string, message string, fields []*Field) bool {
 	for _, field := range fields {
 		if field.Type == ErrorType {
-
-			if match, _ := regexp.MatchString(f.pattern, field.Error.Error()); match {
+			if f.compiledPattern == nil {
+				return false
+			}
+			if f.compiledPattern.MatchString(field.Error.Error()) {
 				return false
 			}
 		}
@@ -70,12 +92,15 @@ func (f *errorRegexp) Allows(level string, message string, fields []*Field) bool
 }
 
 type messageRegexp struct {
-	pattern string
+	pattern         string
+	compiledPattern *regexp.Regexp
 }
 
 func (f *messageRegexp) Allows(level string, message string, fields []*Field) bool {
-	match, _ := regexp.MatchString(f.pattern, message)
-	return !match
+	if f.compiledPattern == nil {
+		return false
+	}
+	return !f.compiledPattern.MatchString(message)
 }
 
 type onlyErrors struct {
@@ -167,4 +192,29 @@ type onlyMetrics struct {
 
 func (f onlyMetrics) Allows(level string, message string, fields []*Field) bool {
 	return level == "metric"
+}
+
+type conditionalFilter struct {
+	enabled bool
+	filter  Filter
+}
+
+func NewConditionalFilter(enabled bool, filter Filter) ConditionalFilter {
+	return &conditionalFilter{enabled, filter}
+}
+
+func (f *conditionalFilter) On() {
+	f.enabled = true
+}
+
+func (f *conditionalFilter) Off() {
+	f.enabled = false
+}
+
+func (f *conditionalFilter) Allows(level string, message string, fields []*Field) bool {
+	if f.enabled && f.filter != nil {
+		return f.filter.Allows(level, message, fields)
+	}
+
+	return true
 }

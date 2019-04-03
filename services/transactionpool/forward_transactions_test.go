@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -56,7 +62,7 @@ func TestForwardsTransactionAfterTimeout(t *testing.T) {
 		gossip := &gossiptopics.MockTransactionRelay{}
 		cfg := &forwarderConfig{3, testKeys.EcdsaSecp256K1KeyPairForTests(0)}
 
-		txForwarder := NewTransactionForwarder(ctx, log.GetLogger(), cfg, gossip)
+		txForwarder := NewTransactionForwarder(ctx, log.DefaultTestingLogger(t), cfg, gossip)
 
 		tx := builders.TransferTransaction().Build()
 		anotherTx := builders.TransferTransaction().Build()
@@ -79,7 +85,7 @@ func TestForwardsTransactionAfterLimitWasReached(t *testing.T) {
 		gossip := &gossiptopics.MockTransactionRelay{}
 		cfg := &forwarderConfig{2, testKeys.EcdsaSecp256K1KeyPairForTests(0)}
 
-		txForwarder := NewTransactionForwarder(ctx, log.GetLogger(), cfg, gossip)
+		txForwarder := NewTransactionForwarder(ctx, log.DefaultTestingLogger(t), cfg, gossip)
 
 		tx := builders.TransferTransaction().Build()
 		anotherTx := builders.TransferTransaction().Build()

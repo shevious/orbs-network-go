@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -32,7 +38,7 @@ func TestGetContractInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			test.WithContext(func(ctx context.Context) {
-				h := newHarness()
+				h := newHarness(t)
 
 				output, err := h.service.GetContractInfo(ctx, tt.input)
 				if tt.expectedError {

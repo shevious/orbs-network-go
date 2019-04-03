@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package blockstorage
 
 import (
@@ -34,7 +40,10 @@ func (s *service) loadTransactionsBlockHeader(height primitives.BlockHeight) (*s
 }
 
 func (s *service) GetTransactionsBlockHeader(ctx context.Context, input *services.GetTransactionsBlockHeaderInput) (result *services.GetTransactionsBlockHeaderOutput, err error) {
-	err = s.persistence.GetBlockTracker().WaitForBlock(ctx, input.BlockHeight)
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.config.BlockTrackerGraceTimeout())
+	defer cancel()
+
+	err = s.persistence.GetBlockTracker().WaitForBlock(timeoutCtx, input.BlockHeight)
 	if err == nil {
 		return s.loadTransactionsBlockHeader(input.BlockHeight)
 	}
@@ -53,7 +62,10 @@ func (s *service) loadResultsBlockHeader(height primitives.BlockHeight) (*servic
 }
 
 func (s *service) GetResultsBlockHeader(ctx context.Context, input *services.GetResultsBlockHeaderInput) (result *services.GetResultsBlockHeaderOutput, err error) {
-	err = s.persistence.GetBlockTracker().WaitForBlock(ctx, input.BlockHeight)
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.config.BlockTrackerGraceTimeout())
+	defer cancel()
+
+	err = s.persistence.GetBlockTracker().WaitForBlock(timeoutCtx, input.BlockHeight)
 	if err == nil {
 		return s.loadResultsBlockHeader(input.BlockHeight)
 	}
@@ -122,5 +134,30 @@ func (s *service) createEmptyTransactionReceiptResult(ctx context.Context) (*ser
 		TransactionReceipt: nil,
 		BlockHeight:        out.LastCommittedBlockHeight,
 		BlockTimestamp:     out.LastCommittedBlockTimestamp,
+	}, nil
+}
+
+func (s *service) GetBlockPair(ctx context.Context, input *services.GetBlockPairInput) (*services.GetBlockPairOutput, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.config.BlockTrackerGraceTimeout())
+	defer cancel()
+
+	err := s.persistence.GetBlockTracker().WaitForBlock(timeoutCtx, input.BlockHeight)
+	if err != nil {
+		return &services.GetBlockPairOutput{
+			BlockPair: nil,
+		}, nil
+	}
+
+	var bpc *protocol.BlockPairContainer
+	err = s.persistence.ScanBlocks(input.BlockHeight, 1, func(h primitives.BlockHeight, page []*protocol.BlockPairContainer) (wantsMore bool) {
+		bpc = page[0]
+		return false
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &services.GetBlockPairOutput{
+		BlockPair: bpc,
 	}, nil
 }

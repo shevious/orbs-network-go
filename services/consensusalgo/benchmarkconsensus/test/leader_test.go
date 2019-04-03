@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -7,7 +13,7 @@ import (
 )
 
 func newLeaderHarnessWaitingForCommittedMessages(t *testing.T, ctx context.Context) *harness {
-	h := newHarness(true)
+	h := newHarness(t, true)
 	h.expectNewBlockProposalNotRequested()
 	h.expectCommitBroadcastViaGossip(0, h.config.NodeAddress())
 	h.createService(ctx)
@@ -116,13 +122,13 @@ func TestLeaderIgnoresBadCommittedMessageSignatures(t *testing.T) {
 	})
 }
 
-func TestLeaderIgnoresNonFederationSigners(t *testing.T) {
+func TestLeaderIgnoresNonValidatorSigners(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
 		h := newLeaderHarnessWaitingForCommittedMessages(t, ctx)
 
-		t.Log("Non federation nodes confirmed height 0 (genesis), commit height 0 again")
+		t.Log("Non validator nodes confirmed height 0 (genesis), commit height 0 again")
 
-		c0 := multipleCommittedMessages().WithHeight(0).FromNonFederationMembers().WithCountAboveQuorum(h.config).Build()
+		c0 := multipleCommittedMessages().WithHeight(0).FromNonGenesisValidators().WithCountAboveQuorum(h.config).Build()
 		h.expectNewBlockProposalNotRequested()
 		h.expectCommitBroadcastViaGossip(0, h.config.NodeAddress())
 

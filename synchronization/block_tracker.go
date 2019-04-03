@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package synchronization
 
 import (
@@ -37,7 +43,7 @@ func (t *BlockTracker) IncrementTo(height primitives.BlockHeight) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if uint64(height) != t.currentHeight+1 {
-		panic(errors.Errorf("Block Tracker expected height %d but got height %d", t.currentHeight+1, height))
+		panic(errors.Errorf("Block Tracker expected height %d but got height %d", t.currentHeight+1, height).Error())
 	}
 
 	t.currentHeight++
@@ -76,6 +82,7 @@ func (t *BlockTracker) WaitForBlock(ctx context.Context, requestedHeight primiti
 			return errors.Wrap(ctx.Err(), fmt.Sprintf("aborted while waiting for block at height %d", requestedHeight))
 		case <-currentLatch:
 			currentHeight, currentLatch = t.readAtomicHeightAndLatch()
+			t.logger.Info("WaitForBlock block arrived", log.BlockHeight(primitives.BlockHeight(currentHeight)))
 		}
 	}
 	return nil

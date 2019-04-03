@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package benchmarkconsensus
 
 import (
@@ -24,8 +30,7 @@ var LogTag = log.Service("consensus-algo-benchmark")
 type Config interface {
 	NodeAddress() primitives.NodeAddress
 	NodePrivateKey() primitives.EcdsaSecp256K1PrivateKey
-	NetworkSize(asOfBlock uint64) uint32
-	FederationNodes(asOfBlock uint64) map[string]config.FederationNode
+	GenesisValidatorNodes() map[string]config.ValidatorNode
 	BenchmarkConsensusConstantLeader() primitives.NodeAddress
 	ActiveConsensusAlgo() consensus.ConsensusAlgoType
 	BenchmarkConsensusRetryInterval() time.Duration
@@ -56,14 +61,16 @@ type metrics struct {
 	failedConsensusTicksRate   *metric.Rate
 	timedOutConsensusTicksRate *metric.Rate
 	votingTime                 *metric.Histogram
+	lastCommittedTime          *metric.Gauge
 }
 
 func newMetrics(m metric.Factory, consensusTimeout time.Duration, collectVotesTimeout time.Duration) *metrics {
 	return &metrics{
-		consensusRoundTickTime:     m.NewLatency("ConsensusAlgo.Benchmark.RoundTickTime", consensusTimeout),
-		votingTime:                 m.NewLatency("ConsensusAlgo.Benchmark.VotingTime", collectVotesTimeout),
-		failedConsensusTicksRate:   m.NewRate("ConsensusAlgo.Benchmark.FailedTicksPerSecond"),
-		timedOutConsensusTicksRate: m.NewRate("ConsensusAlgo.Benchmark.TimedOutTicksPerSecond"),
+		consensusRoundTickTime:     m.NewLatency("ConsensusAlgo.Benchmark.RoundTick.Millis", consensusTimeout),
+		votingTime:                 m.NewLatency("ConsensusAlgo.Benchmark.Voting.Millis", collectVotesTimeout),
+		failedConsensusTicksRate:   m.NewRate("ConsensusAlgo.Benchmark.FailedTicks.PerSecond"),
+		timedOutConsensusTicksRate: m.NewRate("ConsensusAlgo.Benchmark.TimedOutTicks.PerSecond"),
+		lastCommittedTime:          m.NewGauge("ConsensusAlgo.Benchmark.LastCommitted.TimeNano"),
 	}
 }
 

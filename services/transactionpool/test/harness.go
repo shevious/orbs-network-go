@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -17,17 +23,21 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/orbs-network/orbs-spec/types/go/services/gossiptopics"
 	"github.com/orbs-network/orbs-spec/types/go/services/handlers"
+	"testing"
 	"time"
 )
 
 type harness struct {
-	txpool             services.TransactionPool
-	gossip             *gossiptopics.MockTransactionRelay
-	vm                 *services.MockVirtualMachine
-	trh                *handlers.MockTransactionResultsHandler
-	lastBlockHeight    primitives.BlockHeight
-	lastBlockTimestamp primitives.TimestampNano
-	config             config.TransactionPoolConfig
+	txpool                  services.TransactionPool
+	gossip                  *gossiptopics.MockTransactionRelay
+	vm                      *services.MockVirtualMachine
+	trh                     *handlers.MockTransactionResultsHandler
+	lastBlockHeight         primitives.BlockHeight
+	lastBlockTimestamp      primitives.TimestampNano
+	config                  config.TransactionPoolConfig
+	ignoreBlockHeightChecks bool
+	logger                  log.BasicLogger
+	testOutput              *log.TestOutput
 }
 
 var (
@@ -54,6 +64,10 @@ func (h *harness) expectNoTransactionsToBeForwarded() {
 
 func (h *harness) ignoringForwardMessages() {
 	h.gossip.When("BroadcastForwardedTransactions", mock.Any, mock.Any).Return(&gossiptopics.EmptyOutput{}, nil).AtLeast(0)
+}
+
+func (h *harness) ignoringBlockHeightChecks() {
+	h.ignoreBlockHeightChecks = true
 }
 
 func (h *harness) addNewTransaction(ctx context.Context, tx *protocol.SignedTransaction) (*services.AddNewTransactionOutput, error) {
@@ -146,20 +160,20 @@ func (h *harness) ignoringTransactionResults() {
 func (h *harness) getTransactionsForOrdering(ctx context.Context, currentBlockHeight primitives.BlockHeight, maxNumOfTransactions uint32) (*services.GetTransactionsForOrderingOutput, error) {
 	return h.txpool.GetTransactionsForOrdering(ctx, &services.GetTransactionsForOrderingInput{
 		CurrentBlockHeight:      currentBlockHeight,
-		CurrentBlockTimestamp:   0,
+		PrevBlockTimestamp:      primitives.TimestampNano(time.Now().UnixNano() - 100),
 		MaxNumberOfTransactions: maxNumOfTransactions,
 	})
 }
 
-func (h *harness) failPreOrderCheckFor(failOn func(tx *protocol.SignedTransaction) bool) {
+func (h *harness) failPreOrderCheckFor(failOn func(tx *protocol.SignedTransaction) bool, rejectStatus protocol.TransactionStatus) {
 	h.vm.Reset().When("TransactionSetPreOrder", mock.Any, mock.Any).Call(func(ctx context.Context, input *services.TransactionSetPreOrderInput) (*services.TransactionSetPreOrderOutput, error) {
-		if input.CurrentBlockHeight != h.lastBlockHeight+1 {
+		if !h.ignoreBlockHeightChecks && input.CurrentBlockHeight != h.lastBlockHeight+1 {
 			panic(fmt.Sprintf("invalid block height, current is %d and last committed is %d", input.CurrentBlockHeight, h.lastBlockHeight))
 		}
 		statuses := make([]protocol.TransactionStatus, len(input.SignedTransactions))
 		for i, tx := range input.SignedTransactions {
 			if failOn(tx) {
-				statuses[i] = protocol.TRANSACTION_STATUS_REJECTED_SMART_CONTRACT_PRE_ORDER
+				statuses[i] = rejectStatus
 			} else {
 				statuses[i] = protocol.TRANSACTION_STATUS_PRE_ORDER_VALID
 			}
@@ -173,7 +187,7 @@ func (h *harness) failPreOrderCheckFor(failOn func(tx *protocol.SignedTransactio
 func (h *harness) passAllPreOrderChecks() {
 	h.failPreOrderCheckFor(func(tx *protocol.SignedTransaction) bool {
 		return false
-	})
+	}, protocol.TRANSACTION_STATUS_REJECTED_SMART_CONTRACT_PRE_ORDER)
 }
 
 func (h *harness) fastForwardTo(ctx context.Context, height primitives.BlockHeight) {
@@ -202,46 +216,72 @@ func (h *harness) validateTransactionsForOrdering(ctx context.Context, blockHeig
 	_, err := h.txpool.ValidateTransactionsForOrdering(ctx, &services.ValidateTransactionsForOrderingInput{
 		SignedTransactions:    txs,
 		CurrentBlockHeight:    blockHeight,
-		CurrentBlockTimestamp: 0,
+		CurrentBlockTimestamp: primitives.TimestampNano(time.Now().UnixNano()),
 	})
 
 	return err
 }
 
-func newHarness(ctx context.Context) *harness {
-	return newHarnessWithSizeLimit(ctx, 20*1024*1024)
+func (h *harness) getTxReceipt(ctx context.Context, tx *protocol.SignedTransaction) (*services.GetCommittedTransactionReceiptOutput, error) {
+	return h.txpool.GetCommittedTransactionReceipt(ctx, &services.GetCommittedTransactionReceiptInput{
+		Txhash: digest.CalcTxHash(tx.Transaction()),
+	})
 }
 
-func newHarnessWithSizeLimit(ctx context.Context, sizeLimit uint32) *harness {
+func (h *harness) start(ctx context.Context) *harness {
+	service := transactionpool.NewTransactionPool(ctx, h.gossip, h.vm, nil, h.config, h.logger, metric.NewRegistry())
+	service.RegisterTransactionResultsHandler(h.trh)
+	h.txpool = service
+	h.fastForwardTo(ctx, 1)
+	return h
+}
+
+func (h *harness) allowingErrorsMatching(pattern string) *harness {
+	h.testOutput.AllowErrorsMatching(pattern)
+	return h
+}
+
+const DEFAULT_CONFIG_SIZE_LIMIT = 20 * 1024 * 1024
+const DEFAULT_CONFIG_TIME_BETWEEN_EMPTY_BLOCKS_MILLIS = 100
+
+func newHarness(tb testing.TB) *harness {
+	return newHarnessWithConfig(tb, DEFAULT_CONFIG_SIZE_LIMIT, DEFAULT_CONFIG_TIME_BETWEEN_EMPTY_BLOCKS_MILLIS*time.Millisecond)
+}
+
+func newHarnessWithSizeLimit(tb testing.TB, sizeLimit uint32) *harness {
+	return newHarnessWithConfig(tb, sizeLimit, DEFAULT_CONFIG_TIME_BETWEEN_EMPTY_BLOCKS_MILLIS*time.Millisecond)
+}
+
+func newHarnessWithInfiniteTimeBetweenEmptyBlocks(tb testing.TB) *harness {
+	return newHarnessWithConfig(tb, DEFAULT_CONFIG_SIZE_LIMIT, 1*time.Hour)
+}
+
+func newHarnessWithConfig(tb testing.TB, sizeLimit uint32, timeBetweenEmptyBlocks time.Duration) *harness {
 	gossip := &gossiptopics.MockTransactionRelay{}
 	gossip.When("RegisterTransactionRelayHandler", mock.Any).Return()
 
 	virtualMachine := &services.MockVirtualMachine{}
 
-	cfg := config.ForTransactionPoolTests(sizeLimit, thisNodeKeyPair)
-	metricFactory := metric.NewRegistry()
-
-	service := transactionpool.NewTransactionPool(ctx, gossip, virtualMachine, nil, cfg, log.GetLogger(), metricFactory)
+	cfg := config.ForTransactionPoolTests(sizeLimit, thisNodeKeyPair, timeBetweenEmptyBlocks)
+	testOutput := log.NewTestOutput(tb, log.NewHumanReadableFormatter())
+	logger := log.GetLogger().WithOutput(testOutput)
 
 	transactionResultHandler := &handlers.MockTransactionResultsHandler{}
-	service.RegisterTransactionResultsHandler(transactionResultHandler)
 
 	h := &harness{
-		txpool:             service,
 		gossip:             gossip,
 		vm:                 virtualMachine,
 		trh:                transactionResultHandler,
 		lastBlockTimestamp: primitives.TimestampNano(time.Now().UnixNano()),
 		config:             cfg,
+		logger:             logger,
+		testOutput:         testOutput,
 	}
-
-	h.fastForwardTo(ctx, 1)
 
 	h.passAllPreOrderChecks()
 
 	return h
 }
-
 func asReceipts(transactions transactionpool.Transactions) []*protocol.TransactionReceipt {
 	var receipts []*protocol.TransactionReceipt
 	for _, tx := range transactions {

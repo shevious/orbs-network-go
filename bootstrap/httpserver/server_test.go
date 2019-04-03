@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package httpserver
 
 import (
@@ -10,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
@@ -97,8 +102,8 @@ func TestHttpServerTranslateStatusToHttpCode(t *testing.T) {
 	}
 }
 
-func mockServer() *server {
-	logger := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func mockServer(tb testing.TB) *server {
+	logger := log.DefaultTestingLogger(tb)
 	return &server{
 		logger: logger.WithTags(LogTag),
 	}
@@ -115,7 +120,7 @@ func TestHttpServerWriteMembuffResponse(t *testing.T) {
 		TransactionReceipt: nil,
 	}).Build()
 
-	s := mockServer()
+	s := mockServer(t)
 	rec := httptest.NewRecorder()
 	s.writeMembuffResponse(rec, expectedResponse, expectedResponse.RequestResult(), errors.New("example error"))
 
@@ -135,7 +140,7 @@ func TestHttpServerWriteTextResponse(t *testing.T) {
 		logField: nil,
 		message:  "hello test",
 	}
-	s := mockServer()
+	s := mockServer(t)
 	rec := httptest.NewRecorder()
 	s.writeErrorResponseAndLog(rec, e)
 	require.Equal(t, http.StatusAccepted, rec.Code, "code value is not equal")

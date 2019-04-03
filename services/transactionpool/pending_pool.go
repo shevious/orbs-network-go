@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -33,18 +39,20 @@ type pendingTransaction struct {
 }
 
 type pendingPoolMetrics struct {
-	transactionCountGauge        *metric.Gauge
-	poolSizeInBytesGauge         *metric.Gauge
-	transactionRatePerSecond     *metric.Rate
-	transactionNanosSpentInQueue *metric.Histogram
+	transactionCountGauge    *metric.Gauge
+	poolSizeInBytesGauge     *metric.Gauge
+	transactionRatePerSecond *metric.Rate
+	transactionSpentInQueue  *metric.Histogram
+	transactionServiceTime   *metric.Histogram
 }
 
 func newPendingPoolMetrics(factory metric.Factory) *pendingPoolMetrics {
 	return &pendingPoolMetrics{
-		transactionCountGauge:        factory.NewGauge("TransactionPool.PendingPool.TransactionCount"),
-		poolSizeInBytesGauge:         factory.NewGauge("TransactionPool.PendingPool.PoolSizeInBytes"),
-		transactionRatePerSecond:     factory.NewRate("TransactionPool.RatePerSecond"),
-		transactionNanosSpentInQueue: factory.NewLatency("TransactionPool.PendingPool.TimeSpentInQueue", 30*time.Minute),
+		transactionServiceTime:   factory.NewLatency("TransactionPool.ServiceTime.Millis", 30*time.Minute),
+		transactionCountGauge:    factory.NewGauge("TransactionPool.PendingPool.Transactions.Count"),
+		poolSizeInBytesGauge:     factory.NewGauge("TransactionPool.PendingPool.PoolSize.Bytes"),
+		transactionRatePerSecond: factory.NewRate("TransactionPool.TransactionsEnteringPool.PerSecond"),
+		transactionSpentInQueue:  factory.NewLatency("TransactionPool.PendingPool.TimeSpentInQueue.Millis", 30*time.Minute),
 	}
 }
 
@@ -101,7 +109,7 @@ func (p *pendingTxPool) has(transaction *protocol.SignedTransaction) bool {
 	return ok
 }
 
-func (p *pendingTxPool) remove(ctx context.Context, txHash primitives.Sha256, removalReason protocol.TransactionStatus) *pendingTransaction {
+func (p *pendingTxPool) remove(ctx context.Context, txHash primitives.Sha256, removalReason protocol.TransactionStatus) *primitives.NodeAddress {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -117,8 +125,9 @@ func (p *pendingTxPool) remove(ctx context.Context, txHash primitives.Sha256, re
 
 		p.metrics.transactionCountGauge.Dec()
 		p.metrics.poolSizeInBytesGauge.SubUint32(sizeOfSignedTransaction(pendingTx.transaction))
+		p.metrics.transactionServiceTime.RecordSince(pendingTx.timeAdded)
 
-		return pendingTx
+		return &pendingTx.gatewayNodeAddress
 	}
 
 	return nil
@@ -169,7 +178,7 @@ func (p *pendingTxPool) get(txHash primitives.Sha256) *protocol.SignedTransactio
 	return nil
 }
 
-func (p *pendingTxPool) clearTransactionsOlderThan(ctx context.Context, time time.Time) {
+func (p *pendingTxPool) clearTransactionsOlderThan(ctx context.Context, timestamp primitives.TimestampNano) {
 	p.lock.RLock()
 	e := p.transactionList.Back()
 	p.lock.RUnlock()
@@ -183,7 +192,7 @@ func (p *pendingTxPool) clearTransactionsOlderThan(ctx context.Context, time tim
 
 		e = e.Prev()
 
-		if int64(tx.Transaction().Timestamp()) < time.UnixNano() {
+		if tx.Transaction().Timestamp() < timestamp {
 			p.remove(ctx, digest.CalcTxHash(tx.Transaction()), protocol.TRANSACTION_STATUS_REJECTED_TIMESTAMP_WINDOW_EXCEEDED)
 		}
 	}
@@ -193,7 +202,7 @@ func (p *pendingTxPool) transactionPickedFromQueueUnderMutex(tx *protocol.Signed
 	txHash := digest.CalcTxHash(tx.Transaction())
 	ptx, found := p.transactionsByHash[txHash.KeyForMap()]
 	if found {
-		p.metrics.transactionNanosSpentInQueue.RecordSince(ptx.timeAdded)
+		p.metrics.transactionSpentInQueue.RecordSince(ptx.timeAdded)
 	}
 }
 

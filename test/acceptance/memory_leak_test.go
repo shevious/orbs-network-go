@@ -1,4 +1,10 @@
-//+build memoryleak
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
+// +build memoryleak
 
 package acceptance
 
@@ -21,9 +27,9 @@ func TestMemoryLeaks_OnSystemShutdown(t *testing.T) {
 	after, _ := os.Create("/tmp/mem-shutdown-after.prof")
 	defer after.Close()
 
-	t.Run("TestCreateGazillionTransactionsWhileTransportIsDuplicatingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDuplicatingRandomMessages)
-	t.Run("TestCreateGazillionTransactionsWhileTransportIsDroppingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDroppingRandomMessages)
-	t.Run("TestCreateGazillionTransactionsWhileTransportIsDelayingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDelayingRandomMessages)
+	t.Run("TestGazillionTxWhileDuplicatingMessages", TestGazillionTxWhileDuplicatingMessages)
+	t.Run("TestGazillionTxWhileDroppingMessages", TestGazillionTxWhileDroppingMessages)
+	t.Run("TestGazillionTxWhileDelayingMessages", TestGazillionTxWhileDelayingMessages)
 
 	time.Sleep(100 * time.Millisecond)
 	runtime.GC()
@@ -35,9 +41,9 @@ func TestMemoryLeaks_OnSystemShutdown(t *testing.T) {
 	pprof.WriteHeapProfile(before)
 
 	for i := 0; i < 20; i++ {
-		t.Run("TestCreateGazillionTransactionsWhileTransportIsDuplicatingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDuplicatingRandomMessages)
-		t.Run("TestCreateGazillionTransactionsWhileTransportIsDroppingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDroppingRandomMessages)
-		t.Run("TestCreateGazillionTransactionsWhileTransportIsDelayingRandomMessages", TestCreateGazillionTransactionsWhileTransportIsDelayingRandomMessages)
+		t.Run("TestGazillionTxWhileDuplicatingMessages", TestGazillionTxWhileDuplicatingMessages)
+		t.Run("TestGazillionTxWhileDroppingMessages", TestGazillionTxWhileDroppingMessages)
+		t.Run("TestGazillionTxWhileDelayingMessages", TestGazillionTxWhileDelayingMessages)
 	}
 
 	time.Sleep(100 * time.Millisecond)
@@ -52,9 +58,13 @@ func TestMemoryLeaks_OnSystemShutdown(t *testing.T) {
 	memUsageAfterBytes := getMemUsageBytes()
 	pprof.WriteHeapProfile(after)
 
+	if memUsageAfterBytes < memUsageBeforeBytes {
+		return // its okay if the after is less in memory, no leak (and the rest of the math will overflow)
+	}
+
 	deltaMemBytes := memUsageAfterBytes - memUsageBeforeBytes
 	allowedMemIncreaseCalculatedFromMemBefore := uint64(0.1 * float64(memUsageBeforeBytes))
-	allowedMemIncreaseInAbsoluteBytes := uint64(512 * 1024)
+	allowedMemIncreaseInAbsoluteBytes := uint64(1 * 1024 * 1024) // 1MB
 
 	require.Conditionf(t, func() bool {
 		return deltaMemBytes < allowedMemIncreaseCalculatedFromMemBefore || deltaMemBytes < allowedMemIncreaseInAbsoluteBytes

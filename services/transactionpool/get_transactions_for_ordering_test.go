@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -19,7 +25,7 @@ func TestTransactionBatchFetchesUpToMaxNumOfTransactions(t *testing.T) {
 		tx3 := builders.TransferTransaction().Build()
 
 		b := &transactionBatch{
-			logger:               log.GetLogger(),
+			logger:               log.DefaultTestingLogger(t),
 			maxNumOfTransactions: 2,
 		}
 
@@ -40,7 +46,7 @@ func TestTransactionBatchFetchesUpToSizeLimit(t *testing.T) {
 		tx3 := builders.TransferTransaction().Build()
 
 		b := &transactionBatch{
-			logger:               log.GetLogger(),
+			logger:               log.DefaultTestingLogger(t),
 			sizeLimit:            sizeOf(tx1, tx2) + 1,
 			maxNumOfTransactions: 100,
 		}
@@ -60,8 +66,8 @@ func TestTransactionBatchRejectsTransactionsFailingStaticValidation(t *testing.T
 		tx1 := builders.TransferTransaction().Build()
 		tx2 := builders.TransferTransaction().Build()
 
-		b := newTransactionBatch(log.GetLogger(), Transactions{tx1, tx2})
-		b.filterInvalidTransactions(ctx, &fakeValidator{invalid: Transactions{tx2}}, &fakeCommittedChecker{})
+		b := newTransactionBatch(log.DefaultTestingLogger(t), Transactions{tx1, tx2})
+		b.filterInvalidTransactions(ctx, &fakeValidator{invalid: Transactions{tx2}}, &fakeCommittedChecker{}, 0)
 
 		require.Empty(t, b.incomingTransactions, "did not empty incoming transaction list")
 
@@ -78,8 +84,8 @@ func TestTransactionBatchRejectsCommittedTransaction(t *testing.T) {
 		tx1 := builders.TransferTransaction().Build()
 		tx2 := builders.TransferTransaction().Build()
 
-		b := newTransactionBatch(log.GetLogger(), Transactions{tx1, tx2})
-		b.filterInvalidTransactions(ctx, &fakeValidator{}, &fakeCommittedChecker{Transactions{tx2}})
+		b := newTransactionBatch(log.DefaultTestingLogger(t), Transactions{tx1, tx2})
+		b.filterInvalidTransactions(ctx, &fakeValidator{}, &fakeCommittedChecker{Transactions{tx2}}, 0)
 
 		require.Empty(t, b.incomingTransactions, "did not empty incoming transaction list")
 
@@ -95,9 +101,10 @@ func TestTransactionBatchRejectsTransactionsFailingPreOrderValidation(t *testing
 	test.WithContext(func(ctx context.Context) {
 		tx1 := builders.TransferTransaction().Build()
 		tx2 := builders.TransferTransaction().Build()
+		tx3 := builders.TransferTransaction().Build()
 
-		b := &transactionBatch{transactionsForPreOrder: Transactions{tx1, tx2}, logger: log.GetLogger()}
-		err := b.runPreOrderValidations(ctx, &fakeValidator{statuses: []protocol.TransactionStatus{protocol.TRANSACTION_STATUS_PRE_ORDER_VALID, protocol.TRANSACTION_STATUS_REJECTED_SMART_CONTRACT_PRE_ORDER}}, 0, 0)
+		b := &transactionBatch{transactionsForPreOrder: Transactions{tx1, tx2, tx3}, logger: log.DefaultTestingLogger(t)}
+		err := b.runPreOrderValidations(ctx, &fakeValidator{statuses: []protocol.TransactionStatus{protocol.TRANSACTION_STATUS_PRE_ORDER_VALID, protocol.TRANSACTION_STATUS_REJECTED_GLOBAL_PRE_ORDER, protocol.TRANSACTION_STATUS_REJECTED_SIGNATURE_MISMATCH}}, 0, 0)
 
 		require.NoError(t, err, "this should really never happen")
 		require.Empty(t, b.transactionsForPreOrder, "did not empty transaction for preorder list")
@@ -105,8 +112,11 @@ func TestTransactionBatchRejectsTransactionsFailingPreOrderValidation(t *testing
 		require.Len(t, b.validTransactions, 1)
 		require.Equal(t, tx1, b.validTransactions[0], "valid transaction was rejected")
 
-		require.Equal(t, protocol.TRANSACTION_STATUS_REJECTED_SMART_CONTRACT_PRE_ORDER, b.transactionsToReject[0].status, "invalid transaction was not rejected")
+		require.Equal(t, protocol.TRANSACTION_STATUS_REJECTED_GLOBAL_PRE_ORDER, b.transactionsToReject[0].status, "invalid transaction was not rejected")
 		require.Equal(t, digest.CalcTxHash(tx2.Transaction()), b.transactionsToReject[0].hash, "invalid transaction was not rejected")
+
+		require.Equal(t, protocol.TRANSACTION_STATUS_REJECTED_SIGNATURE_MISMATCH, b.transactionsToReject[1].status, "invalid transaction was not rejected")
+		require.Equal(t, digest.CalcTxHash(tx3.Transaction()), b.transactionsToReject[1].hash, "invalid transaction was not rejected")
 	})
 }
 
@@ -115,7 +125,7 @@ func TestTransactionBatchPanicsIfPreOrderResultsHasDifferentLengthThanSent(t *te
 		tx1 := builders.TransferTransaction().Build()
 		tx2 := builders.TransferTransaction().Build()
 
-		b := &transactionBatch{transactionsForPreOrder: Transactions{tx1, tx2}, logger: log.GetLogger()}
+		b := &transactionBatch{transactionsForPreOrder: Transactions{tx1, tx2}, logger: log.DefaultTestingLogger(t)}
 		require.Panics(t, func() {
 			b.runPreOrderValidations(ctx, &fakeValidator{}, 0, 0)
 		}, "pre order validation returning statuses with length that differs from number of txs sent did not panic")
@@ -165,7 +175,7 @@ func (c *fakeCommittedChecker) has(txHash primitives.Sha256) bool {
 	return false
 }
 
-func (v *fakeValidator) validateTransaction(txToValidate *protocol.SignedTransaction) *ErrTransactionRejected {
+func (v *fakeValidator) ValidateTransactionForOrdering(txToValidate *protocol.SignedTransaction, proposedBlockTimestamp primitives.TimestampNano) *ErrTransactionRejected {
 	for _, tx := range v.invalid {
 		if tx == txToValidate {
 			return &ErrTransactionRejected{TransactionStatus: protocol.TRANSACTION_STATUS_RESERVED}
@@ -179,7 +189,7 @@ type fakeRemover struct {
 	removed map[string]protocol.TransactionStatus
 }
 
-func (r *fakeRemover) remove(ctx context.Context, txHash primitives.Sha256, removalReason protocol.TransactionStatus) *pendingTransaction {
+func (r *fakeRemover) remove(ctx context.Context, txHash primitives.Sha256, removalReason protocol.TransactionStatus) *primitives.NodeAddress {
 	r.removed[txHash.KeyForMap()] = removalReason
 	return nil
 }

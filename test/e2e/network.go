@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package e2e
 
 import (
@@ -14,7 +20,7 @@ import (
 
 var OwnerOfAllSupply = keys.Ed25519KeyPairForTests(5) // needs to be a constant across all e2e tests since we deploy the contract only once
 
-// LOCAL_NETWORK_SIZE must remain identical to number of configured nodes in docker/test/e2e-config
+// LOCAL_NETWORK_SIZE must remain identical to number of configured nodes in docker/test/benchmark-config
 // Also Lean Helix consensus algo requires it to be >= 4 or it will panic
 const LOCAL_NETWORK_SIZE = 4
 
@@ -39,14 +45,15 @@ func (h *inProcessE2ENetwork) GracefulShutdownAndWipeDisk() {
 }
 
 func bootstrapE2ENetwork() (nodes []bootstrap.Node) {
-	firstRandomPort := test.RandomPort()
-
-	federationNodes := make(map[string]config.FederationNode)
+	gossipPortByNodeIndex := []int{}
+	genesisValidatorNodes := make(map[string]config.ValidatorNode)
 	gossipPeers := make(map[string]config.GossipPeer)
+
 	for i := 0; i < LOCAL_NETWORK_SIZE; i++ {
+		gossipPortByNodeIndex = append(gossipPortByNodeIndex, test.RandomPort())
 		nodeAddress := keys.EcdsaSecp256K1KeyPairForTests(i).NodeAddress()
-		federationNodes[nodeAddress.KeyForMap()] = config.NewHardCodedFederationNode(nodeAddress)
-		gossipPeers[nodeAddress.KeyForMap()] = config.NewHardCodedGossipPeer(firstRandomPort+i, "127.0.0.1")
+		genesisValidatorNodes[nodeAddress.KeyForMap()] = config.NewHardCodedValidatorNode(nodeAddress)
+		gossipPeers[nodeAddress.KeyForMap()] = config.NewHardCodedGossipPeer(gossipPortByNodeIndex[i], "127.0.0.1")
 	}
 
 	ethereumEndpoint := os.Getenv("ETHEREUM_ENDPOINT") //TODO v1 unite how this config is fetched
@@ -78,14 +85,14 @@ func bootstrapE2ENetwork() (nodes []bootstrap.Node) {
 		cfg := config.
 			ForE2E(
 				processorArtifactPath,
-				federationNodes,
+				genesisValidatorNodes,
 				gossipPeers,
 				leaderKeyPair.NodeAddress(),
 				consensus.CONSENSUS_ALGO_TYPE_BENCHMARK_CONSENSUS,
 				ethereumEndpoint).
 			OverrideNodeSpecificValues(
 				fmt.Sprintf(":%d", START_HTTP_PORT+i),
-				firstRandomPort+i,
+				gossipPortByNodeIndex[i],
 				nodeKeyPair.NodeAddress(),
 				nodeKeyPair.PrivateKey(),
 				blockStorageDataDirPrefix)

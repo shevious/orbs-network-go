@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package publicapi
 
 import (
@@ -27,16 +33,26 @@ type service struct {
 }
 
 type metrics struct {
-	sendTransactionTime      *metric.Histogram
-	getTransactionStatusTime *metric.Histogram
-	runQueryTime             *metric.Histogram
+	sendTransactionTime                *metric.Histogram
+	getTransactionStatusTime           *metric.Histogram
+	runQueryTime                       *metric.Histogram
+	totalTransactionsFromClients       *metric.Gauge
+	totalTransactionsErrNilRequest     *metric.Gauge
+	totalTransactionsErrInvalidRequest *metric.Gauge
+	totalTransactionsErrAddingToTxPool *metric.Gauge
+	totalTransactionsErrDuplicate      *metric.Gauge
 }
 
 func newMetrics(factory metric.Factory, sendTransactionTimeout time.Duration, getTransactionStatusTimeout time.Duration, runQueryTimeout time.Duration) *metrics {
 	return &metrics{
-		sendTransactionTime:      factory.NewLatency("PublicApi.SendTransactionProcessingTime", sendTransactionTimeout),
-		getTransactionStatusTime: factory.NewLatency("PublicApi.GetTransactionStatusProcessingTime", getTransactionStatusTimeout),
-		runQueryTime:             factory.NewLatency("PublicApi.RunQueryProcessingTime", runQueryTimeout),
+		sendTransactionTime:                factory.NewLatency("PublicApi.SendTransactionProcessingTime.Millis", sendTransactionTimeout),
+		getTransactionStatusTime:           factory.NewLatency("PublicApi.GetTransactionStatusProcessingTime.Millis", getTransactionStatusTimeout),
+		runQueryTime:                       factory.NewLatency("PublicApi.RunQueryProcessingTime.Millis", runQueryTimeout),
+		totalTransactionsFromClients:       factory.NewGauge("PublicApi.TotalTransactionsFromClients.Count"),
+		totalTransactionsErrNilRequest:     factory.NewGauge("PublicApi.TotalTransactionsErrNilRequest.Count"),
+		totalTransactionsErrInvalidRequest: factory.NewGauge("PublicApi.TotalTransactionsErrInvalidRequest.Count"),
+		totalTransactionsErrAddingToTxPool: factory.NewGauge("PublicApi.TotalTransactionsErrAddingToTxPool.Count"),
+		totalTransactionsErrDuplicate:      factory.NewGauge("PublicApi.TotalTransactionsErrDuplicate.Count"),
 	}
 }
 

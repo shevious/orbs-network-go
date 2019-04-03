@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -12,7 +18,7 @@ import (
 
 func TestContextId_Simple(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 
 		var CONTEXT_ID = []byte{0x17, 0x18}
 
@@ -28,7 +34,7 @@ func TestContextId_Simple(t *testing.T) {
 func TestContextId_MultipleGoroutines(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
 		var wg sync.WaitGroup
-		h := newHarness()
+		h := newHarness(t)
 
 		for i := 0; i < 20; i++ {
 			wg.Add(1)

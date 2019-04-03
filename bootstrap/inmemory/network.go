@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package inmemory
 
 import (
@@ -28,9 +34,10 @@ import (
 
 // Represents an in-process network connecting a group of in-memory Nodes together using the provided Transport
 type Network struct {
-	Nodes     []*Node
-	Logger    log.BasicLogger
-	Transport adapter.Transport
+	Nodes          []*Node
+	Logger         log.BasicLogger
+	Transport      adapter.Transport
+	VirtualChainId primitives.VirtualChainId
 }
 
 type NodeDependencies struct {
@@ -44,7 +51,7 @@ type NodeDependencies struct {
 type nodeDependencyProvider func(idx int, nodeConfig config.NodeConfig, logger log.BasicLogger, metricRegistry metric.Registry) *NodeDependencies
 
 func NewNetworkWithNumOfNodes(
-	federation map[string]config.FederationNode,
+	validators map[string]config.ValidatorNode,
 	nodeOrder []primitives.NodeAddress,
 	privateKeys map[string]primitives.EcdsaSecp256K1PrivateKey,
 	parent log.BasicLogger,
@@ -54,13 +61,15 @@ func NewNetworkWithNumOfNodes(
 ) *Network {
 
 	network := &Network{
-		Logger:    parent,
-		Transport: transport,
+		Logger:         parent,
+		Transport:      transport,
+		VirtualChainId: cfgTemplate.VirtualChainId(),
 	}
 	parent.Info("acceptance network node order", log.StringableSlice("addresses", nodeOrder))
+	parent.Info(configToStr(cfgTemplate))
 
 	for _, address := range nodeOrder {
-		federationNode := federation[address.KeyForMap()]
+		validatorNode := validators[address.KeyForMap()]
 		cfg := cfgTemplate.ForNode(address, privateKeys[address.KeyForMap()])
 		metricRegistry := metric.NewRegistry()
 
@@ -77,10 +86,27 @@ func NewNetworkWithNumOfNodes(
 			dep = provider(len(network.Nodes), cfg, nodeLogger, metricRegistry)
 		}
 
-		network.addNode(fmt.Sprintf("%s", federationNode.NodeAddress()[:3]), cfg, dep, metricRegistry, nodeLogger)
+		network.addNode(fmt.Sprintf("%s", validatorNode.NodeAddress()[:3]), cfg, dep, metricRegistry, nodeLogger)
 	}
 
 	return network // call network.CreateAndStartNodes to launch nodes in the network
+}
+
+func configToStr(cfgTemplate config.OverridableConfig) string {
+	// This is an OPINIONATED list of important config properties to print to aid debugging
+	configStr := fmt.Sprintf("CONFIG_PROPS: public-api-tx-timeout=%s lh-election-timeout=%s node-sync-nocommit-interval=%s node-sync-collect-chunks-timeout=%s node-sync-collect-response-timeout=%s block-tracker-grace-timeout=%s gossip-timeout=%s, block-sync-num-blocks-in-batch=%d papi-node-sync-warning-time=%s txpool-time-between-empty-blocks=%s",
+		cfgTemplate.PublicApiSendTransactionTimeout(),
+		cfgTemplate.LeanHelixConsensusRoundTimeoutInterval(),
+		cfgTemplate.BlockSyncNoCommitInterval(),
+		cfgTemplate.BlockSyncCollectChunksTimeout(),
+		cfgTemplate.BlockSyncCollectResponseTimeout(),
+		cfgTemplate.BlockTrackerGraceTimeout(),
+		cfgTemplate.GossipNetworkTimeout(),
+		cfgTemplate.BlockSyncNumBlocksInBatch(),
+		cfgTemplate.PublicApiNodeSyncWarningTime(),
+		cfgTemplate.TransactionPoolTimeBetweenEmptyBlocks(),
+	)
+	return configStr
 }
 
 func (n *Network) addNode(name string, cfg config.NodeConfig, nodeDependencies *NodeDependencies, metricRegistry metric.Registry, logger log.BasicLogger) {
@@ -163,7 +189,7 @@ func (n *Network) SendTransaction(ctx context.Context, builder *protocol.SignedT
 
 	out := <-ch
 	if out.res == nil {
-		panic(fmt.Sprintf("error in send transaction: %v", out.err)) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
+		panic(fmt.Sprintf("error in send transaction: %s", out.err.Error())) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
 	}
 	return out.res.ClientResponse, txHash
 }
@@ -173,12 +199,11 @@ func (n *Network) SendTransactionInBackground(ctx context.Context, builder *prot
 
 	go func() {
 		publicApi := n.Nodes[nodeIndex].GetPublicApi()
-		output, err := publicApi.SendTransaction(ctx, &services.SendTransactionInput{
-			ClientRequest:     (&client.SendTransactionRequestBuilder{SignedTransaction: builder}).Build(),
-			ReturnImmediately: 1,
+		output, err := publicApi.SendTransactionAsync(ctx, &services.SendTransactionInput{
+			ClientRequest: (&client.SendTransactionRequestBuilder{SignedTransaction: builder}).Build(),
 		})
 		if output == nil {
-			panic(fmt.Sprintf("error sending transaction: %v", err)) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
+			panic(fmt.Sprintf("error sending transaction: %s", err.Error())) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
 		}
 	}()
 }
@@ -208,7 +233,37 @@ func (n *Network) GetTransactionStatus(ctx context.Context, txHash primitives.Sh
 	}()
 	out := <-ch
 	if out.res == nil {
-		panic(fmt.Sprintf("error in get tx status: %v", out.err)) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
+		panic(fmt.Sprintf("error in get tx status: %s", out.err.Error())) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
+	}
+	return out.res.ClientResponse
+}
+
+type getTxProofResp struct {
+	res *services.GetTransactionReceiptProofOutput
+	err error
+}
+
+func (n *Network) GetTransactionReceiptProof(ctx context.Context, txHash primitives.Sha256, nodeIndex int) *client.GetTransactionReceiptProofResponse {
+	n.assertStarted(nodeIndex)
+
+	ch := make(chan getTxProofResp)
+	go func() {
+		defer close(ch)
+		publicApi := n.Nodes[nodeIndex].GetPublicApi()
+		output, err := publicApi.GetTransactionReceiptProof(ctx, &services.GetTransactionReceiptProofInput{
+			ClientRequest: (&client.GetTransactionReceiptProofRequestBuilder{
+				TransactionRef: builders.TransactionRef().WithTxHash(txHash).Builder(),
+			}).Build(),
+		})
+		select {
+		case ch <- getTxProofResp{res: output, err: err}:
+		case <-ctx.Done():
+			ch <- getTxProofResp{err: errors.Wrap(ctx.Err(), "aborted get tx receipt proof")}
+		}
+	}()
+	out := <-ch
+	if out.res == nil {
+		panic(fmt.Sprintf("error in get tx receipt proof: %s", out.err.Error())) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
 	}
 	return out.res.ClientResponse
 }
@@ -237,14 +292,14 @@ func (n *Network) RunQuery(ctx context.Context, builder *protocol.SignedQueryBui
 	}()
 	out := <-ch
 	if out.res == nil {
-		panic(fmt.Sprintf("error in run query: %v", out.err)) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
+		panic(fmt.Sprintf("error in run query: %s", out.err.Error())) // TODO(https://github.com/orbs-network/orbs-network-go/issues/531): improve
 	}
 	return out.res.ClientResponse
 }
 
 func (n *Network) assertStarted(nodeIndex int) {
 	if !n.Nodes[nodeIndex].Started() {
-		panic(fmt.Errorf("accessing a stopped node %d", nodeIndex))
+		panic(fmt.Sprintf("accessing a stopped node %d", nodeIndex))
 	}
 }
 
@@ -256,4 +311,8 @@ func (n *Network) Destroy() {
 
 func (n *Network) MetricRegistry(nodeIndex int) metric.Registry {
 	return n.Nodes[nodeIndex].metricRegistry
+}
+
+func (n *Network) GetVirtualChainId() primitives.VirtualChainId {
+	return n.VirtualChainId
 }

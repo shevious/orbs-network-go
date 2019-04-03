@@ -1,7 +1,6 @@
 # Orbs Network
 
-[![Build](https://circleci.com/gh/orbs-network/orbs-network-go/tree/master.svg?style=svg)](https://circleci.com/gh/orbs-network/orbs-network-go/tree/master)
-[![Jepsen](https://circleci.com/gh/orbs-network/jepsen/tree/master.svg?style=svg)](https://circleci.com/gh/orbs-network/jepsen/tree/master)
+[![CI](https://circleci.com/gh/orbs-network/orbs-network-go/tree/master.svg?style=svg)](https://circleci.com/gh/orbs-network/orbs-network-go/tree/master)
 
 Orbs is a public blockchain infrastructure built for the needs of decentralized apps with millions of users. For more information, please check https://orbs.com and read the [white papers](https://orbs.com/white-papers).
 
@@ -82,7 +81,7 @@ We use the official go test runner `go test`. It has minimal UI and result cachi
 
 Please install go-junit-reporter prior to running tests for the first time:
 ```
-go get -u github.com/jstemmer/go-junit-report
+go get -u github.com/orbs-network/go-junit-report
 ```
 
 ### Test
@@ -168,7 +167,7 @@ Please run `git config --local core.hooksPath .githooks` after cloning the repos
 
 Occasionally, local tests with `go test` will pass but the same tests on Docker will fail. This usually happens when tests are flaky and sensitive to timing (we do our best to avoid this). 
 
-* Run `./docker/build/build.debug.sh` and `./docker/test/test.debug.sh` to have a shorter development cycle by skipping tests and avoiding building development tools when the image is built. The purpose of these files is to let developers run E2E on Docker as fast as possible.
+* Run `./docker/build/build.sh` and `./docker/test/test.sh`.
 
 * If the E2E test gets stuck or `docker-compose` stops working properly, try to **remove all containers** with this handy command: `docker rm -f $(docker ps -aq)`. But remember that **ALL YOUR LOCAL CONTAINERS WILL BE GONE** (even from other projects).
 
@@ -192,8 +191,8 @@ Occasionally, local tests with `go test` will pass but the same tests on Docker 
   * It's also recommended to uncheck `Show Ignored` tests and check `Show Passed` in the test panel after running the configuration
   * If you have a failed test which keeps failing due to cache click `Rerun Failed Tests` in the test panel (it will ignore cache)
 
-* The supervised package recovers and suppresses panics in goroutines. You can disable this behavior when running tests in the IDE:
-  * Under `Preferences | Go | Vendoring & Build Tags | Custom tags ` add the tag `norecover`
+* Running some tests that are unsafe for production deployments requires a special build flag, enable it if you're a core developer:
+  * Under `Preferences | Go | Vendoring & Build Tags | Custom tags ` add the tag `unsafetests`
 
 * You may enable the following automatic tools that run on file changes:
   * "go fmt" in `Preferences | Tools | File Watchers`, add with `+` the `go fmt` watcher
@@ -213,6 +212,22 @@ Occasionally, local tests with `go test` will pass but the same tests on Docker 
 To enable profiling: put `"profiling": true` in your `config.json`.
 
 It will enable [net/http/pprof](https://golang.org/pkg/net/http/pprof/) package, and you will be able to query `pprof` via http just as described in the docs.
+
+### Debugging with logs
+
+By default, log output is filtered to only errors and metrics. To enable full log, put `"logger-full-log": true` in your node configuration. It will permanently remove the filter.
+
+If you want to enable or disable this filter in production, there is a way to do that via HTTP API:
+
+```
+curl -XPOST http://$NODE_IP/vchains/$VCHAIN/debug/logs/fiter-on
+```
+
+Or
+
+```
+curl -XPOST http://$NODE_IP/vchains/$VCHAIN/debug/logs/fiter-off
+```
 
 ## Development principles
 Refer to the [Contributor's Guide](CONTRIBUTING.md) (work in progress)

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package testkit
 
 import (
@@ -21,17 +27,17 @@ type tamperingHarness struct {
 	listener  *MockTransportListener
 }
 
-func newTamperingHarness(ctx context.Context) *tamperingHarness {
+func newTamperingHarness(tb testing.TB, ctx context.Context) *tamperingHarness {
 	senderAddress := "sender"
 	listenerAddress := "listener"
 	listener := &MockTransportListener{}
-	logger := log.GetLogger(log.String("adapter", "transport"))
+	logger := log.DefaultTestingLogger(tb).WithTags(log.String("adapter", "transport"))
 
-	federationNodes := make(map[string]config.FederationNode)
-	federationNodes[senderAddress] = config.NewHardCodedFederationNode(primitives.NodeAddress(senderAddress))
-	federationNodes[listenerAddress] = config.NewHardCodedFederationNode(primitives.NodeAddress(listenerAddress))
+	genesisValidatorNodes := make(map[string]config.ValidatorNode)
+	genesisValidatorNodes[senderAddress] = config.NewHardCodedValidatorNode(primitives.NodeAddress(senderAddress))
+	genesisValidatorNodes[listenerAddress] = config.NewHardCodedValidatorNode(primitives.NodeAddress(listenerAddress))
 
-	transport := NewTamperingTransport(logger, memory.NewTransport(ctx, logger, federationNodes))
+	transport := NewTamperingTransport(logger, memory.NewTransport(ctx, logger, genesisValidatorNodes))
 
 	transport.RegisterListener(listener, primitives.NodeAddress(listenerAddress))
 
@@ -56,7 +62,7 @@ func (c *tamperingHarness) broadcast(ctx context.Context, sender string, payload
 
 func TestFailingTamperer(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		c := newTamperingHarness(ctx)
+		c := newTamperingHarness(t, ctx)
 
 		c.transport.Fail(anyMessage())
 
@@ -73,7 +79,7 @@ func TestFailingTamperer(t *testing.T) {
 
 func TestPausingTamperer(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		c := newTamperingHarness(ctx)
+		c := newTamperingHarness(t, ctx)
 
 		digits := make(chan byte, 10)
 
@@ -107,7 +113,7 @@ func TestLatchingTamperer_WaitBlocksUntilSend(t *testing.T) {
 	t.Parallel()
 
 	test.WithContext(func(ctx context.Context) {
-		c := newTamperingHarness(ctx)
+		c := newTamperingHarness(t, ctx)
 
 		latch := c.transport.LatchOn(anyMessage())
 		c.listener.WhenOnTransportMessageReceived(mock.Any)
@@ -121,7 +127,7 @@ func TestLatchingTamperer_SendBlocksUntilWait(t *testing.T) {
 	t.Parallel()
 
 	test.WithContext(func(ctx context.Context) {
-		c := newTamperingHarness(ctx)
+		c := newTamperingHarness(t, ctx)
 
 		latch := c.transport.LatchOn(anyMessage())
 		c.listener.WhenOnTransportMessageReceived(mock.Any)

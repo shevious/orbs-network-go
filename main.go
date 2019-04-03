@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package main
 
 import (
@@ -6,16 +12,12 @@ import (
 	"github.com/orbs-network/orbs-network-go/bootstrap"
 	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
-	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
-	"time"
 )
 
-func getLogger(path string, silent bool, httpLogEndpoint string, httpLogBulkSize int,
-	vchainId primitives.VirtualChainId, truncationInterval time.Duration) log.BasicLogger {
-
+func getLogger(path string, silent bool, cfg config.NodeConfig) log.BasicLogger {
 	if path == "" {
 		path = "./orbs-network.log"
 	}
@@ -25,7 +27,7 @@ func getLogger(path string, silent bool, httpLogEndpoint string, httpLogBulkSize
 		panic(err)
 	}
 
-	fileWriter := log.NewTruncatingFileWriter(logFile, truncationInterval)
+	fileWriter := log.NewTruncatingFileWriter(logFile, cfg.LoggerFileTruncationInterval())
 	outputs := []log.Output{
 		log.NewFormattingOutput(fileWriter, log.NewJsonFormatter()),
 	}
@@ -34,22 +36,27 @@ func getLogger(path string, silent bool, httpLogEndpoint string, httpLogBulkSize
 		outputs = append(outputs, log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
 	}
 
-	if httpLogEndpoint != "" {
+	if cfg.LoggerHttpEndpoint() != "" {
 		customJSONFormatter := log.NewJsonFormatter().WithTimestampColumn("@timestamp")
-		bulkSize := httpLogBulkSize
+		bulkSize := int(cfg.LoggerBulkSize())
 		if bulkSize == 0 {
 			bulkSize = 100
 		}
 
-		outputs = append(outputs, log.NewBulkOutput(log.NewHttpWriter(httpLogEndpoint), customJSONFormatter, bulkSize))
+		outputs = append(outputs, log.NewBulkOutput(log.NewHttpWriter(cfg.LoggerHttpEndpoint()), customJSONFormatter, bulkSize))
 	}
 
-	return log.GetLogger().WithTags(
-		log.VirtualChainId(vchainId),
-		log.String("_branch", os.Getenv("GIT_BRANCH")),
-		log.String("_commit", os.Getenv("GIT_COMMIT")),
-		log.String("_test", os.Getenv("TEST_NAME")),
+	logger := log.GetLogger().WithTags(
+		log.VirtualChainId(cfg.VirtualChainId()),
 	).WithOutput(outputs...)
+
+	conditionalFilter := log.NewConditionalFilter(false, nil)
+
+	if !cfg.LoggerFullLog() {
+		conditionalFilter = log.NewConditionalFilter(true, log.Or(log.OnlyErrors(), log.OnlyMetrics()))
+	}
+
+	return logger.WithFilters(conditionalFilter)
 }
 
 func getConfig(configFiles config.ArrayFlags, httpAddress string) (config.NodeConfig, error) {
@@ -58,7 +65,7 @@ func getConfig(configFiles config.ArrayFlags, httpAddress string) (config.NodeCo
 	if len(configFiles) != 0 {
 		for _, configFile := range configFiles {
 			if _, err := os.Stat(configFile); os.IsNotExist(err) {
-				return nil, errors.Errorf("could not open config file: %v", err)
+				return nil, errors.Errorf("could not open config file: %s", err)
 			}
 
 			contents, err := ioutil.ReadFile(configFile)
@@ -97,12 +104,11 @@ func main() {
 
 	cfg, err := getConfig(configFiles, *httpAddress)
 	if err != nil {
-		fmt.Printf("%s\n", err)
+		fmt.Printf("%s \n", err)
 		os.Exit(1)
 	}
 
-	logger := getLogger(*pathToLog, *silentLog, cfg.LoggerHttpEndpoint(), int(cfg.LoggerBulkSize()),
-		cfg.VirtualChainId(), cfg.LoggerFileTruncationInterval())
+	logger := getLogger(*pathToLog, *silentLog, cfg)
 
 	bootstrap.NewNode(
 		cfg,

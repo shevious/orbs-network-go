@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package statestorage
 
 import (
 	"context"
+	"fmt"
 	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/crypto/merkle"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
@@ -19,14 +26,16 @@ import (
 var LogTag = log.Service("state-storage")
 
 type metrics struct {
-	readKeys  *metric.Rate
-	writeKeys *metric.Rate
+	readKeys    *metric.Rate
+	writeKeys   *metric.Rate
+	blockHeight *metric.Gauge
 }
 
 func newMetrics(m metric.Factory) *metrics {
 	return &metrics{
-		readKeys:  m.NewRate("StateStorage.ReadRequestedKeysPerSecond"),
-		writeKeys: m.NewRate("StateStorage.WriteRequestedKeysPerSecond"),
+		readKeys:    m.NewRate("StateStorage.ReadRequestedKeys.PerSecond"),
+		writeKeys:   m.NewRate("StateStorage.WriteRequestedKeys.PerSecond"),
+		blockHeight: m.NewGauge("StateStorage.BlockHeight"),
 	}
 }
 
@@ -63,7 +72,7 @@ func (s *service) CommitStateDiff(ctx context.Context, input *services.CommitSta
 	logger := s.logger.WithTags(trace.LogFieldFrom(ctx))
 
 	if input.ResultsBlockHeader == nil || input.ContractStateDiffs == nil {
-		panic("CommitStateDiff received corrupt args")
+		panic(fmt.Sprintf("CommitStateDiff received corrupt args, input=%+v", input))
 	}
 
 	commitBlockHeight := input.ResultsBlockHeader.BlockHeight()
@@ -90,12 +99,12 @@ func (s *service) CommitStateDiff(ctx context.Context, input *services.CommitSta
 
 	s.blockTracker.IncrementTo(commitBlockHeight)
 	s.heightReporter.IncrementTo(commitBlockHeight)
+	s.metrics.blockHeight.Update(int64(commitBlockHeight))
 
 	return &services.CommitStateDiffOutput{NextDesiredBlockHeight: commitBlockHeight + 1}, nil
 }
 
 func (s *service) ReadKeys(ctx context.Context, input *services.ReadKeysInput) (*services.ReadKeysOutput, error) {
-	s.logger.Info("ReadKeys", log.BlockHeight(input.BlockHeight), log.String("contract", string(input.ContractName)))
 	if input.ContractName == "" {
 		return nil, errors.Errorf("missing contract name")
 	}

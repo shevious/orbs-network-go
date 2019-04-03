@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package config
 
 import (
@@ -14,9 +20,8 @@ type NodeConfig interface {
 	NetworkType() protocol.SignerNetworkType
 	NodeAddress() primitives.NodeAddress
 	NodePrivateKey() primitives.EcdsaSecp256K1PrivateKey
-	NetworkSize(asOfBlock uint64) uint32
-	FederationNodes(asOfBlock uint64) map[string]FederationNode
-	GossipPeers(asOfBlock uint64) map[string]GossipPeer
+	GenesisValidatorNodes() map[string]ValidatorNode
+	GossipPeers() map[string]GossipPeer
 	TransactionExpirationWindow() time.Duration
 
 	// consensus
@@ -25,6 +30,7 @@ type NodeConfig interface {
 	// Lean Helix consensus
 	LeanHelixConsensusRoundTimeoutInterval() time.Duration
 	LeanHelixConsensusMinimumCommitteeSize() uint32
+	LeanHelixConsensusMaximumCommitteeSize() uint32
 	LeanHelixShowDebug() bool
 
 	// benchmark consensus
@@ -73,17 +79,18 @@ type NodeConfig interface {
 
 	// processor
 	ProcessorArtifactPath() string
-
-	// metrics
-	MetricsReportInterval() time.Duration
+	ProcessorSanitizeDeployedContracts() bool
 
 	// ethereum connector (crosschain)
 	EthereumEndpoint() string
+	EthereumFinalityTimeComponent() time.Duration
+	EthereumFinalityBlocksComponent() uint32
 
 	// logger
 	LoggerHttpEndpoint() string
 	LoggerBulkSize() uint32
 	LoggerFileTruncationInterval() time.Duration
+	LoggerFullLog() bool
 
 	// http server
 	HttpAddress() string
@@ -105,7 +112,7 @@ type mutableNodeConfig interface {
 	SetUint32(key string, value uint32) mutableNodeConfig
 	SetString(key string, value string) mutableNodeConfig
 	SetBool(key string, value bool) mutableNodeConfig
-	SetFederationNodes(nodes map[string]FederationNode) mutableNodeConfig
+	SetGenesisValidatorNodes(nodes map[string]ValidatorNode) mutableNodeConfig
 	SetGossipPeers(peers map[string]GossipPeer) mutableNodeConfig
 	SetNodeAddress(key primitives.NodeAddress) mutableNodeConfig
 	SetNodePrivateKey(key primitives.EcdsaSecp256K1PrivateKey) mutableNodeConfig
@@ -123,6 +130,7 @@ type BlockStorageConfig interface {
 	BlockSyncCollectChunksTimeout() time.Duration
 	BlockStorageTransactionReceiptQueryTimestampGrace() time.Duration
 	TransactionExpirationWindow() time.Duration
+	BlockTrackerGraceTimeout() time.Duration
 }
 
 type FilesystemBlockPersistenceConfig interface {
@@ -133,7 +141,7 @@ type FilesystemBlockPersistenceConfig interface {
 
 type GossipTransportConfig interface {
 	NodeAddress() primitives.NodeAddress
-	GossipPeers(asOfBlock uint64) map[string]GossipPeer
+	GossipPeers() map[string]GossipPeer
 	GossipListenPort() uint16
 	GossipConnectionKeepAliveInterval() time.Duration
 	GossipNetworkTimeout() time.Duration
@@ -144,7 +152,7 @@ type ConsensusContextConfig interface {
 	ProtocolVersion() primitives.ProtocolVersion
 	VirtualChainId() primitives.VirtualChainId
 	ConsensusContextMaximumTransactionsInBlock() uint32
-	FederationNodes(asOfBlock uint64) map[string]FederationNode
+	GenesisValidatorNodes() map[string]ValidatorNode
 	LeanHelixConsensusMinimumCommitteeSize() uint32
 	ConsensusContextSystemTimestampAllowedJitter() time.Duration
 }
@@ -178,7 +186,28 @@ type TransactionPoolConfig interface {
 	TransactionPoolNodeSyncRejectTime() time.Duration
 }
 
-type FederationNode interface {
+type EthereumCrosschainConnectorConfig interface {
+	EthereumFinalityTimeComponent() time.Duration
+	EthereumFinalityBlocksComponent() uint32
+}
+
+type NativeProcessorConfig interface {
+	ProcessorSanitizeDeployedContracts() bool
+	VirtualChainId() primitives.VirtualChainId
+}
+
+type LeanHelixConsensusConfig interface {
+	NodeAddress() primitives.NodeAddress
+	NodePrivateKey() primitives.EcdsaSecp256K1PrivateKey
+	LeanHelixConsensusRoundTimeoutInterval() time.Duration
+	LeanHelixConsensusMaximumCommitteeSize() uint32
+	LeanHelixShowDebug() bool
+	ActiveConsensusAlgo() consensus.ConsensusAlgoType
+	VirtualChainId() primitives.VirtualChainId
+	NetworkType() protocol.SignerNetworkType
+}
+
+type ValidatorNode interface {
 	NodeAddress() primitives.NodeAddress
 }
 

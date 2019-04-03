@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package native
 
 import (
@@ -42,4 +48,8 @@ func (s *service) SdkEnvGetBlockTimestamp(executionContextId sdkContext.ContextI
 		panic("getBlockHeight Sdk.Env returned corrupt output value")
 	}
 	return output.OutputArguments[0].Uint64Value()
+}
+
+func (s *service) SdkEnvGetVirtualChainId(executionContextId sdkContext.ContextId, permissionScope sdkContext.PermissionScope) uint32 {
+	return uint32(s.config.VirtualChainId())
 }

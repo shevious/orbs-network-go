@@ -1,8 +1,13 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
 	"context"
-	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 )
@@ -26,18 +31,12 @@ func (s *service) GetCommittedTransactionReceipt(ctx context.Context, input *ser
 }
 
 func (s *service) getTxResult(receipt *protocol.TransactionReceipt, status protocol.TransactionStatus) *services.GetCommittedTransactionReceiptOutput {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.lastCommitted.RLock()
+	defer s.lastCommitted.RUnlock()
 	return &services.GetCommittedTransactionReceiptOutput{
 		TransactionStatus:  status,
 		TransactionReceipt: receipt,
-		BlockHeight:        s.mu.lastCommittedBlockHeight,
-		BlockTimestamp:     s.mu.lastCommittedBlockTimestamp,
+		BlockHeight:        s.lastCommitted.blockHeight,
+		BlockTimestamp:     s.lastCommitted.timestamp,
 	}
-}
-
-func (s *service) currentNodeTimeWithGrace() primitives.TimestampNano {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.mu.lastCommittedBlockTimestamp + primitives.TimestampNano(s.config.TransactionPoolFutureTimestampGraceTimeout().Nanoseconds())
 }

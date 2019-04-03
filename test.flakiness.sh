@@ -1,12 +1,42 @@
 #!/bin/bash -x
 
-source ./test.common.sh
+. ./test.common.sh
 
-NO_LOG_STDOUT=true go test -tags "cpunoise norecover" ./test/acceptance -count 100 -timeout 20m -failfast > _out/test.out
-check_exit_code_and_report
+LAST_COMMIT_MESSAGE=`git --no-pager log --decorate=short --pretty=oneline -n1 $CIRCLE_SHA1`
+FAILFAST="-failfast"
+TIMEOUT_ACCEPTANCE="20m"
+TIMEOUT_REST="10m"
+COUNT_ACCEPTANCE=35
+COUNT_REST=70
 
-NO_LOG_STDOUT=true go test -tags "cpunoise norecover" ./services/blockstorage/test -count 100 -timeout 7m -failfast > _out/test.out
-check_exit_code_and_report
+if [[ "${LAST_COMMIT_MESSAGE}" == *"#extraflaky"* ]]; then
+    FAILFAST=""
+    TIMEOUT_ACCEPTANCE="500m"
+    TIMEOUT_REST="500m"
+    COUNT_ACCEPTANCE=200
+    COUNT_REST=200
+fi
 
-NO_LOG_STDOUT=true go test -tags "cpunoise norecover" ./services/blockstorage/internodesync -count 100 -timeout 7m -failfast > _out/test.out
-check_exit_code_and_report
+if [[ $1 == "NIGHTLY" ]]; then
+    NIGHTLY=1
+    echo "performing nightly build (count 1000/2000 , no failfast)"
+    FAILFAST=""
+    TIMEOUT_ACCEPTANCE="500m"
+    TIMEOUT_REST="500m"
+    COUNT_ACCEPTANCE=500
+    COUNT_REST=500
+fi
+
+if [ "$CIRCLE_NODE_INDEX" == 0 ] || [ "$CIRCLE_NODE_INDEX" == 1 ] || [ "$CIRCLE_NODE_INDEX" == 2 ] || [ "$CIRCLE_NODE_INDEX" == 3 ] || [ -z "$CIRCLE_NODE_INDEX" ]; then
+    go_test_junit_report acceptance ./test/acceptance -count $COUNT_ACCEPTANCE -timeout $TIMEOUT_ACCEPTANCE $FAILFAST -tags "unsafetests"
+fi
+
+if [ "$CIRCLE_NODE_INDEX" == 4 ] || [ "$CIRCLE_NODE_INDEX" == 5 ] || [ -z "$CIRCLE_NODE_INDEX" ]; then
+    go_test_junit_report blockstorage ./services/blockstorage/test -count $COUNT_ACCEPTANCE -timeout $TIMEOUT_REST $FAILFAST -tags "unsafetests"
+
+    go_test_junit_report internodesync ./services/blockstorage/internodesync -count $COUNT_ACCEPTANCE -timeout $TIMEOUT_REST $FAILFAST -tags "unsafetests"
+
+    go_test_junit_report servicesync ./services/blockstorage/servicesync -count $COUNT_ACCEPTANCE -timeout $TIMEOUT_REST $FAILFAST -tags -tags "unsafetests"
+
+    go_test_junit_report transactionpool ./services/transactionpool/test -count $COUNT_ACCEPTANCE -timeout $TIMEOUT_REST $FAILFAST -tags -tags "unsafetests"
+fi

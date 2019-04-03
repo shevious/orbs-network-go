@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package benchmarkconsensus
 
 import (
@@ -9,16 +15,16 @@ import (
 )
 
 func TestLeaderQuorum(t *testing.T) {
-	nodes := make(map[string]config.FederationNode)
+	nodes := make(map[string]config.ValidatorNode)
 
 	for i := 0; i < 6; i++ {
 		nodes[fmt.Sprintf("fake-key-node%d", i)] = nil
 	}
 
 	cfg := config.ForProduction("")
-	cfg.SetFederationNodes(nodes)
+	cfg.SetGenesisValidatorNodes(nodes)
 
-	require.NotZero(t, cfg.NetworkSize(0))
+	require.NotZero(t, len(cfg.GenesisValidatorNodes()))
 
 	s := &service{
 		config: cfg,
@@ -34,7 +40,7 @@ func (f *fakeFed) NodeAddress() primitives.NodeAddress {
 }
 
 func TestLeaderBadKey(t *testing.T) {
-	nodes := make(map[string]config.FederationNode)
+	nodes := make(map[string]config.ValidatorNode)
 
 	for i := 1; i < 6; i++ {
 		nodes[fmt.Sprintf("fake-key-node%d", i)] = nil
@@ -43,7 +49,7 @@ func TestLeaderBadKey(t *testing.T) {
 	nodes["fake-key-node0"] = fake
 
 	cfg := config.ForProduction("")
-	cfg.SetFederationNodes(nodes)
+	cfg.SetGenesisValidatorNodes(nodes)
 
 	s := &service{
 		config: cfg,

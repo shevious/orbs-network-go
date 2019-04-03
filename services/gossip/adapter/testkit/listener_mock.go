@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package testkit
 
 import (
@@ -25,11 +31,17 @@ func ListenTo(transport adapter.Transport, nodeAddress primitives.NodeAddress) *
 }
 
 func (l *MockTransportListener) ExpectReceive(payloads [][]byte) {
-	l.WhenOnTransportMessageReceived(payloads).Return().Times(1)
+	l.WhenOnTransportMessageReceived(payloads).Return().AtLeast(1)
 }
 
 func (l *MockTransportListener) ExpectNotReceive() {
 	l.Never("OnTransportMessageReceived", mock.Any, mock.Any)
+}
+
+func (l *MockTransportListener) BlockReceive() {
+	l.When("OnTransportMessageReceived", mock.Any, mock.Any).Call(func(ctx context.Context, payloads [][]byte) {
+		<-ctx.Done()
+	})
 }
 
 func (l *MockTransportListener) WhenOnTransportMessageReceived(arg interface{}) *mock.MockFunction {

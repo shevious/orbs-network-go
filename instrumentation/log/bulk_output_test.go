@@ -1,9 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package log
 
 import (
 	"context"
 	"fmt"
-	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"net"
@@ -22,34 +27,34 @@ type httpOutputHarness struct {
 }
 
 func newHttpHarness(handler http.Handler) *httpOutputHarness {
-	port := test.RandomPort()
-
 	router := http.NewServeMux()
 	router.Handle("/submit-logs", handler)
 
 	return &httpOutputHarness{
-		port:   port,
 		router: router,
 	}
 }
 
 func (h *httpOutputHarness) start(t *testing.T) {
+	ch := make(chan struct{})
 	go func() {
-		address := fmt.Sprintf("127.0.0.1:%d", h.port)
-		t.Log("Serving http requests on", address)
-
-		listener, err := net.Listen("tcp", address)
-		h.listener = listener
-
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err, "failed to use http port")
+
+		h.port = listener.Addr().(*net.TCPAddr).Port
+		t.Log("Serving http requests on", "127.0.0.1:%d", h.port)
+
+		h.listener = listener
 
 		server := &http.Server{
 			Handler: h.router,
 		}
-		err = server.Serve(h.listener)
-		require.NoError(t, err, "failed to serve http requests")
+		ch <- struct{}{}
+		_ = server.Serve(h.listener) // no point in handling this error, it will always be an error when server dies
+
 	}()
-	time.Sleep(1 * time.Millisecond)
+	<-ch
+
 }
 
 func (h *httpOutputHarness) stop(t *testing.T) {

@@ -1,11 +1,17 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package consensuscontext
 
 import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/crypto/hash"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"sort"
@@ -15,28 +21,22 @@ func (s *service) RequestOrderingCommittee(ctx context.Context, input *services.
 	return s.RequestValidationCommittee(ctx, input)
 }
 
-func toNodeAddresses(nodes map[string]config.FederationNode) []primitives.NodeAddress {
-	nodeAddresses := make([]primitives.NodeAddress, len(nodes))
-	i := 0
-	for _, value := range nodes {
-		nodeAddresses[i] = value.NodeAddress()
-		i++
-	}
-	return nodeAddresses
-}
-
 func (s *service) RequestValidationCommittee(ctx context.Context, input *services.RequestCommitteeInput) (*services.RequestCommitteeOutput, error) {
-	federationNodes := s.config.FederationNodes(uint64(input.CurrentBlockHeight))
-	federationNodesAddresses := toNodeAddresses(federationNodes)
-	committeeSize := calculateCommitteeSize(input.MaxCommitteeSize, s.config.LeanHelixConsensusMinimumCommitteeSize(), uint32(len(federationNodesAddresses)))
-	indices, err := chooseRandomCommitteeIndices(committeeSize, input.RandomSeed, federationNodesAddresses)
+	electedValidatorsAddresses, err := s.getElectedValidators(ctx, input.CurrentBlockHeight)
+	if err != nil {
+		return nil, err
+	}
+
+	committeeSize := calculateCommitteeSize(input.MaxCommitteeSize, s.config.LeanHelixConsensusMinimumCommitteeSize(), uint32(len(electedValidatorsAddresses)))
+	s.logger.Info("Calculated committee size", log.BlockHeight(input.CurrentBlockHeight), log.Uint32("committee-size", committeeSize), log.Int("elected-validators-count", len(electedValidatorsAddresses)), log.Uint32("max-committee-size", input.MaxCommitteeSize))
+	indices, err := chooseRandomCommitteeIndices(committeeSize, input.RandomSeed, electedValidatorsAddresses)
 	if err != nil {
 		return nil, err
 	}
 
 	committeeNodeAddresses := make([]primitives.NodeAddress, len(indices))
 	for i, index := range indices {
-		committeeNodeAddresses[i] = primitives.NodeAddress(federationNodesAddresses[int(index)])
+		committeeNodeAddresses[i] = primitives.NodeAddress(electedValidatorsAddresses[int(index)])
 	}
 
 	res := &services.RequestCommitteeOutput{
@@ -47,20 +47,15 @@ func (s *service) RequestValidationCommittee(ctx context.Context, input *service
 	return res, nil
 }
 
-func calculateCommitteeSize(requestedCommitteeSize uint32, minimumCommitteeSize uint32, federationSize uint32) uint32 {
-
-	if federationSize < minimumCommitteeSize {
-		panic(fmt.Sprintf("config error: federation size %d cannot be less than minimum committee size %d", federationSize, minimumCommitteeSize))
-	}
-
-	if requestedCommitteeSize < minimumCommitteeSize {
+func calculateCommitteeSize(maximumCommitteeSize uint32, minimumCommitteeSize uint32, totalValidatorsSize uint32) uint32 {
+	if maximumCommitteeSize < minimumCommitteeSize {
 		return minimumCommitteeSize
 	}
 
-	if requestedCommitteeSize > federationSize {
-		return federationSize
+	if maximumCommitteeSize > totalValidatorsSize {
+		return totalValidatorsSize
 	}
-	return requestedCommitteeSize
+	return maximumCommitteeSize
 }
 
 // See https://github.com/orbs-network/orbs-spec/issues/111
@@ -97,6 +92,11 @@ func chooseRandomCommitteeIndices(committeeSize uint32, randomSeed uint64, nodes
 	sort.Slice(grades, func(i, j int) bool {
 		return grades[i].grade > grades[j].grade
 	})
+
+	// even if the number of nodes is below minimum, we don't want to crash here and let our caller deal with this
+	if uint32(len(nodes)) < committeeSize {
+		committeeSize = uint32(len(nodes))
+	}
 
 	indices := make([]uint32, committeeSize)
 	for i := 0; i < int(committeeSize); i++ {

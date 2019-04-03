@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -29,7 +35,7 @@ type committed struct {
 	count                int
 	blockHeight          primitives.BlockHeight
 	invalidSignatures    bool
-	nonFederationMembers bool
+	nonGenesisValidators bool
 }
 
 func multipleCommittedMessages() *committed {
@@ -37,7 +43,8 @@ func multipleCommittedMessages() *committed {
 }
 
 func (c *committed) WithCountBelowQuorum(cfg benchmarkconsensus.Config) *committed {
-	if cfg.NetworkSize(0) != 5 || cfg.BenchmarkConsensusRequiredQuorumPercentage() != 66 {
+	networkSize := len(cfg.GenesisValidatorNodes())
+	if networkSize != 5 || cfg.BenchmarkConsensusRequiredQuorumPercentage() != 66 {
 		panic("tests assumes 5 nodes with quorum percentage of 66, quorum is 4/5 = 3 other nodes")
 	}
 	c.count = 2
@@ -45,7 +52,8 @@ func (c *committed) WithCountBelowQuorum(cfg benchmarkconsensus.Config) *committ
 }
 
 func (c *committed) WithCountAboveQuorum(cfg benchmarkconsensus.Config) *committed {
-	if cfg.NetworkSize(0) != 5 || cfg.BenchmarkConsensusRequiredQuorumPercentage() != 66 {
+	networkSize := len(cfg.GenesisValidatorNodes())
+	if networkSize != 5 || cfg.BenchmarkConsensusRequiredQuorumPercentage() != 66 {
 		panic("tests assumes 5 nodes with quorum percentage of 66, quorum is 4/5 = 3 other nodes")
 	}
 	c.count = 3
@@ -62,8 +70,8 @@ func (c *committed) WithInvalidSignatures() *committed {
 	return c
 }
 
-func (c *committed) FromNonFederationMembers() *committed {
-	c.nonFederationMembers = true
+func (c *committed) FromNonGenesisValidators() *committed {
+	c.nonGenesisValidators = true
 	return c
 }
 
@@ -71,7 +79,7 @@ func (c *committed) Build() (res []*gossipmessages.BenchmarkConsensusCommittedMe
 	aCommitted := builders.BenchmarkConsensusCommittedMessage().WithLastCommittedHeight(c.blockHeight)
 	for i := 0; i < c.count; i++ {
 		keyPair := keys.EcdsaSecp256K1KeyPairForTests(i + 1) // leader is set 0
-		if c.nonFederationMembers {
+		if c.nonGenesisValidators {
 			keyPair = keys.EcdsaSecp256K1KeyPairForTests(i + NETWORK_SIZE)
 		}
 		if c.invalidSignatures {

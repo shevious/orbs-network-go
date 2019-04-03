@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -13,7 +19,6 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/orbs-network/orbs-spec/types/go/services/gossiptopics"
 	"github.com/orbs-network/orbs-spec/types/go/services/handlers"
-	"os"
 	"testing"
 	"time"
 )
@@ -42,14 +47,12 @@ func otherNonLeaderKeyPair() *testKeys.TestEcdsaSecp256K1KeyPair {
 	return testKeys.EcdsaSecp256K1KeyPairForTests(2)
 }
 
-func newHarness(
-	isLeader bool,
-) *harness {
+func newHarness(tb testing.TB, isLeader bool) *harness {
 
-	federationNodes := make(map[string]config.FederationNode)
+	genesisValidatorNodes := make(map[string]config.ValidatorNode)
 	for i := 0; i < NETWORK_SIZE; i++ {
 		nodeAddress := testKeys.EcdsaSecp256K1KeyPairForTests(i).NodeAddress()
-		federationNodes[nodeAddress.KeyForMap()] = config.NewHardCodedFederationNode(nodeAddress)
+		genesisValidatorNodes[nodeAddress.KeyForMap()] = config.NewHardCodedValidatorNode(nodeAddress)
 	}
 
 	nodeKeyPair := leaderKeyPair()
@@ -59,17 +62,18 @@ func newHarness(
 
 	//TODO(v1) don't use acceptance tests config! use a per-service config
 	cfg := config.ForAcceptanceTestNetwork(
-		federationNodes,
+		genesisValidatorNodes,
 		leaderKeyPair().NodeAddress(),
 		consensus.CONSENSUS_ALGO_TYPE_BENCHMARK_CONSENSUS,
 		1,
 		100,
+		42,
 	)
 
 	cfg.SetDuration(config.BENCHMARK_CONSENSUS_RETRY_INTERVAL, 5*time.Millisecond)
 	cfg.SetUint32(config.BENCHMARK_CONSENSUS_REQUIRED_QUORUM_PERCENTAGE, 66)
 
-	log := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+	log := log.DefaultTestingLogger(tb)
 
 	gossip := &gossiptopics.MockBenchmarkConsensus{}
 	gossip.When("RegisterBenchmarkConsensusHandler", mock.Any).Return().Times(1)

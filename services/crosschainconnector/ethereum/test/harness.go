@@ -1,22 +1,26 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
 	"context"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
+	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
 	"github.com/orbs-network/orbs-network-go/services/crosschainconnector/ethereum"
 	"github.com/orbs-network/orbs-network-go/services/crosschainconnector/ethereum/adapter"
 	"github.com/orbs-network/orbs-network-go/services/crosschainconnector/ethereum/contract"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 type harness struct {
@@ -26,15 +30,6 @@ type harness struct {
 	logger     log.BasicLogger
 	address    string
 	config     *ethereumConnectorConfigForTests
-}
-
-type ethereumConnectorConfigForTests struct {
-	endpoint      string
-	privateKeyHex string
-}
-
-func (c *ethereumConnectorConfigForTests) EthereumEndpoint() string {
-	return c.endpoint
 }
 
 func (h *harness) deploySimulatorStorageContract(ctx context.Context, text string) error {
@@ -53,7 +48,7 @@ func (h *harness) getAddress() string {
 }
 
 func (h *harness) deployRpcStorageContract(text string) (string, error) {
-	auth, err := h.authFromConfig()
+	auth, err := h.config.GetAuthFromConfig()
 	if err != nil {
 		return "", err
 	}
@@ -65,47 +60,45 @@ func (h *harness) deployRpcStorageContract(text string) (string, error) {
 	return hexutil.Encode(address[:]), nil
 }
 
-func (h *harness) deployContractsToGanache(t *testing.T, count int, delayBetweenContracts time.Duration) error {
-	// create two blocks, in ganache transaction -> block
+func (h *harness) moveBlocksInGanache(t *testing.T, count int, blockGapInSeconds int) error {
+	c, err := rpc.Dial(h.config.endpoint)
+	require.NoError(t, err, "failed creating Ethereum rpc client")
+	//start := time.Now()
 	for i := 0; i < count; i++ {
-		_, err := h.deployRpcStorageContract("junk-we-do-not-care-about")
-		require.NoError(t, err, "failed deploying contract number %d to Ethereum", i)
-
-		time.Sleep(delayBetweenContracts)
+		require.NoError(t, c.Call(struct{}{}, "evm_increaseTime", blockGapInSeconds), "failed increasing time")
+		require.NoError(t, c.Call(struct{}{}, "evm_mine"), "failed increasing time")
 	}
 
 	return nil
 }
 
-func newRpcEthereumConnectorHarness(cfg *ethereumConnectorConfigForTests) *harness {
-	logger := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newRpcEthereumConnectorHarness(tb testing.TB, cfg *ethereumConnectorConfigForTests) *harness {
+	logger := log.DefaultTestingLogger(tb)
 	a := adapter.NewEthereumRpcConnection(cfg, logger)
 
 	return &harness{
 		config:     cfg,
 		rpcAdapter: a,
 		logger:     logger,
-		connector:  ethereum.NewEthereumCrosschainConnector(a, logger),
+		connector:  ethereum.NewEthereumCrosschainConnector(a, cfg, logger, metric.NewRegistry()),
 	}
 }
 
-func (h *harness) authFromConfig() (*bind.TransactOpts, error) {
-	key, err := crypto.HexToECDSA(h.config.privateKeyHex)
-	if err != nil {
-		return nil, err
-	}
-
-	return bind.NewKeyedTransactor(key), nil
+func (h *harness) WithFakeTimeGetter() *harness {
+	h.connector = ethereum.NewEthereumCrosschainConnectorWithFakeTimeGetter(h.simAdapter, h.config, h.logger, metric.NewRegistry())
+	return h
 }
 
-func newSimulatedEthereumConnectorHarness() *harness {
-	logger := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newSimulatedEthereumConnectorHarness(tb testing.TB) *harness {
+	logger := log.DefaultTestingLogger(tb)
 	conn := adapter.NewEthereumSimulatorConnection(logger)
+	cfg := ConfigForSimulatorConnection()
 
 	return &harness{
+		config:     cfg,
 		simAdapter: conn,
 		logger:     logger,
-		connector:  ethereum.NewEthereumCrosschainConnector(conn, logger),
+		connector:  ethereum.NewEthereumCrosschainConnector(conn, cfg, logger, metric.NewRegistry()),
 	}
 }
 

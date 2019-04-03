@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -10,6 +16,7 @@ import (
 	"github.com/orbs-network/orbs-network-go/services/blockstorage/adapter/memory"
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
+	"github.com/orbs-network/orbs-network-go/test/rand"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/stretchr/testify/require"
@@ -23,8 +30,8 @@ func withEachAdapter(t *testing.T, testFunc func(t *testing.T, adapter adapter.B
 		t.Skip("Skipping contract tests in short mode")
 	}
 	adapters := []*adapterUnderTest{
-		newInMemoryAdapter(),
-		newFilesystemAdapter(),
+		newInMemoryAdapter(t),
+		newFilesystemAdapter(t),
 	}
 	for _, a := range adapters {
 		t.Run(a.name, func(t *testing.T) {
@@ -43,15 +50,16 @@ func TestBlockPersistenceContract_GetLastBlockWhenNoneExistReturnsNilNoError(t *
 }
 
 func TestBlockPersistenceContract_WritesBlockAndRetrieves(t *testing.T) {
-	ctrlRand := test.NewControlledRand(t)
+	ctrlRand := rand.NewControlledRand(t)
 	for i := 1; i <= 10; i++ {
 
 		blocks := builders.RandomizedBlockChain(ctrlRand.Int31n(100)+10, ctrlRand)
 
 		withEachAdapter(t, func(t *testing.T, adapter adapter.BlockPersistence) {
 			for _, b := range blocks {
-				err := adapter.WriteNextBlock(b)
-				require.NoError(t, err)
+				added, err := adapter.WriteNextBlock(b)
+				require.NoError(t, err, "write should succeed")
+				require.True(t, added, "block should actually be added (it's not duplicate)")
 			}
 
 			// test ScanBlocks
@@ -73,10 +81,60 @@ func TestBlockPersistenceContract_WritesBlockAndRetrieves(t *testing.T) {
 	}
 }
 
-func TestBlockPersistenceContract_FailToWriteOutOfOrder(t *testing.T) {
+func TestBlockPersistenceContract_ReadUnknownBlocksReturnsError(t *testing.T) {
 	withEachAdapter(t, func(t *testing.T, adapter adapter.BlockPersistence) {
-		err := adapter.WriteNextBlock(builders.BlockPair().WithHeight(2).Build())
+		err := adapter.ScanBlocks(1, 1, func(first primitives.BlockHeight, page []*protocol.BlockPairContainer) (wantsMore bool) {
+			t.Fatal("expected cursorFunc never to be invoked if requested block height is not in storage")
+			return false
+		})
 		require.Error(t, err)
+	})
+}
+
+func TestBlockPersistenceContract_WriteOutOfOrderFuture_Fails(t *testing.T) {
+	withEachAdapter(t, func(t *testing.T, adapter adapter.BlockPersistence) {
+		added, err := adapter.WriteNextBlock(builders.BlockPair().WithHeight(2).Build())
+		require.Error(t, err, "write should fail")
+		require.False(t, added, "block should not be added (due to failure)")
+	})
+}
+
+func TestBlockPersistenceContract_WriteOutOfOrderPast_NotFailsWhenBlockIdentical(t *testing.T) {
+	withEachAdapter(t, func(t *testing.T, adapter adapter.BlockPersistence) {
+		block1 := builders.BlockPair().WithHeight(1).Build()
+		block2 := builders.BlockPair().WithHeight(2).WithPrevBlock(block1).Build()
+
+		added, err := adapter.WriteNextBlock(block1)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
+		added, err = adapter.WriteNextBlock(block2)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
+
+		added, err = adapter.WriteNextBlock(block1)
+		require.NoError(t, err, "write should succeed")
+		require.False(t, added, "block should not be added though (it's duplicate)")
+	})
+}
+
+func TestBlockPersistenceContract_WriteOutOfOrderPast_FailsWhenBlockDifferent(t *testing.T) {
+	t.Skip("fails with In_Memory_Adapter and should be fixed") // TODO(v1): fix
+	withEachAdapter(t, func(t *testing.T, adapter adapter.BlockPersistence) {
+		now := time.Now()
+		block1 := builders.BlockPair().WithHeight(1).WithBlockCreated(now).Build()
+		block2 := builders.BlockPair().WithHeight(2).WithPrevBlock(block1).Build()
+		otherBlock1 := builders.BlockPair().WithHeight(1).WithBlockCreated(now.Add(1 * time.Second)).Build()
+
+		added, err := adapter.WriteNextBlock(block1)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
+		added, err = adapter.WriteNextBlock(block2)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
+
+		added, err = adapter.WriteNextBlock(otherBlock1)
+		require.Error(t, err, "write of a different old block should fail")
+		require.False(t, added, "block should not be added (due to failure)")
 	})
 }
 
@@ -85,10 +143,12 @@ func TestBlockPersistenceContract_ReturnsTwoBlocks(t *testing.T) {
 		block1 := builders.BlockPair().WithHeight(1).Build()
 		block2 := builders.BlockPair().WithHeight(2).WithPrevBlock(block1).Build()
 
-		err := adapter.WriteNextBlock(block1)
-		require.NoError(t, err)
-		err = adapter.WriteNextBlock(block2)
-		require.NoError(t, err)
+		added, err := adapter.WriteNextBlock(block1)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
+		added, err = adapter.WriteNextBlock(block2)
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
 
 		require.NoError(t, adapter.ScanBlocks(1, 2, func(first primitives.BlockHeight, page []*protocol.BlockPairContainer) bool {
 			test.RequireCmpEqual(t, block1, page[0], "block 1 did not match")
@@ -108,8 +168,9 @@ func TestBlockPersistenceContract_BlockTrackerBlocksUntilRequestedHeight(t *test
 		require.Error(t, err)
 
 		// write block height 1
-		err = adapter.WriteNextBlock(builders.BlockPair().WithHeight(1).Build())
-		require.NoError(t, err)
+		added, err := adapter.WriteNextBlock(builders.BlockPair().WithHeight(1).Build())
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
 
 		// block tracker returns from wait immediately without error
 		shortDeadlineCtx, _ = context.WithTimeout(context.Background(), 5*time.Millisecond)
@@ -125,8 +186,9 @@ func TestBlockPersistenceContract_ReturnsLastBlockHeight(t *testing.T) {
 		require.EqualValues(t, 0, h)
 
 		// write block height 1
-		err = adapter.WriteNextBlock(builders.BlockPair().WithHeight(1).Build())
-		require.NoError(t, err)
+		added, err := adapter.WriteNextBlock(builders.BlockPair().WithHeight(1).Build())
+		require.NoError(t, err, "write should succeed")
+		require.True(t, added, "block should actually be added (it's not duplicate)")
 
 		h, err = adapter.GetLastBlockHeight()
 		require.NoError(t, err)
@@ -143,8 +205,9 @@ func TestBlockPersistenceContract_ReturnsTransactionsAndResultsBlock(t *testing.
 		}
 
 		for _, b := range blocks {
-			err := adapter.WriteNextBlock(b)
+			added, err := adapter.WriteNextBlock(b)
 			require.NoError(t, err)
+			require.True(t, added)
 		}
 
 		readTxBlock, err := adapter.GetTransactionsBlock(2)
@@ -170,8 +233,9 @@ func TestBlockPersistenceContract_ReturnsBlockByTx(t *testing.T) {
 		}
 
 		for _, b := range blocks {
-			err := adapter.WriteNextBlock(b)
-			require.NoError(t, err)
+			added, err := adapter.WriteNextBlock(b)
+			require.NoError(t, err, "write should succeed")
+			require.True(t, added, "block should actually be added (it's not duplicate)")
 		}
 
 		tx := blocks[1].TransactionsBlock.SignedTransactions[6].Transaction()
@@ -189,15 +253,15 @@ type adapterUnderTest struct {
 	cleanup func()
 }
 
-func newInMemoryAdapter() *adapterUnderTest {
+func newInMemoryAdapter(tb testing.TB) *adapterUnderTest {
 	return &adapterUnderTest{
 		name:    "In Memory Adapter",
-		adapter: memory.NewBlockPersistence(log.GetLogger(), metric.NewRegistry()),
+		adapter: memory.NewBlockPersistence(log.DefaultTestingLogger(tb), metric.NewRegistry()),
 		cleanup: func() {},
 	}
 }
 
-func newFilesystemAdapter() *adapterUnderTest {
+func newFilesystemAdapter(tb testing.TB) *adapterUnderTest {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	conf := newTempFileConfig()
@@ -206,9 +270,10 @@ func newFilesystemAdapter() *adapterUnderTest {
 		_ = os.RemoveAll(conf.BlockStorageFileSystemDataDir()) // ignore errors - nothing to do
 	}
 
-	persistence, err := filesystem.NewBlockPersistence(ctx, conf, log.GetLogger(), metric.NewRegistry())
+	logger := log.DefaultTestingLogger(tb)
+	persistence, err := filesystem.NewBlockPersistence(ctx, conf, logger, metric.NewRegistry())
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 
 	return &adapterUnderTest{

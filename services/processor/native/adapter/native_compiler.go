@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 //+build !nonativecompiler
 
 package adapter
@@ -55,12 +61,12 @@ func (c *nativeCompiler) Compile(ctx context.Context, code string) (*sdkContext.
 	sourceCodeFilePath, err := writeSourceCodeToDisk(hashOfCode, code, artifactsPath)
 	defer os.Remove(sourceCodeFilePath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not write source code to disk")
 	}
 
 	soFilePath, err := buildSharedObject(ctx, hashOfCode, sourceCodeFilePath, artifactsPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not build a shared object")
 	}
 
 	return loadSharedObject(soFilePath)
@@ -125,14 +131,14 @@ func buildSharedObject(ctx context.Context, filenamePrefix string, sourceFilePat
 func loadSharedObject(soFilePath string) (*sdkContext.ContractInfo, error) {
 	loadedPlugin, err := plugin.Open(soFilePath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not open plugin")
 	}
 
 	publicMethods := []interface{}{}
 	var publicMethodsPtr *[]interface{}
 	publicMethodsSymbol, err := loadedPlugin.Lookup("PUBLIC")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not look up a symbol inside a plugin")
 	}
 	publicMethodsPtr, ok := publicMethodsSymbol.(*[]interface{})
 	if !ok {

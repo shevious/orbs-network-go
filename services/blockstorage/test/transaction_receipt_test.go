@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -14,7 +20,7 @@ import (
 
 func TestReturnTransactionReceiptIfTransactionNotFound(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncBroadcast(1).
 			withCommitStateDiff(1).
 			withValidateConsensusAlgos(1).
@@ -39,17 +45,17 @@ func TestReturnTransactionReceiptIfTransactionNotFound(t *testing.T) {
 
 func TestReturnTransactionReceipt(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncBroadcast(1).
 			withCommitStateDiff(1).
 			withValidateConsensusAlgos(1).
 			start(ctx)
 
-		block := builders.BlockPair().WithTransactions(10).WithReceiptsForTransactions().WithTimestampNow().Build()
+		block := builders.BlockPair().WithHeight(1).WithTransactions(10).WithReceiptsForTransactions().WithTimestampNow().Build()
 		harness.commitBlock(ctx, block)
 
 		// it will be similar data transactions, but with different time stamps (and hashes..)
-		block2 := builders.BlockPair().WithTransactions(10).WithReceiptsForTransactions().WithTimestampNow().Build()
+		block2 := builders.BlockPair().WithHeight(2).WithTransactions(10).WithReceiptsForTransactions().WithTimestampNow().Build()
 		harness.commitBlock(ctx, block2)
 
 		// taking a transaction at 'random' (they were created at random)

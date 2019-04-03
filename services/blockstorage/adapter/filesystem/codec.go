@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package filesystem
 
 import (
@@ -284,6 +290,7 @@ func (c *codec) writeDynamicBlockSectionWithChecksum(w io.Writer, messages []mem
 	return nil
 }
 
+// TODO V1 see https://tree.taiga.io/project/orbs-network/us/681
 func (c *codec) decode(r io.Reader) (*protocol.BlockPairContainer, int, error) {
 	checkSum := crc32.New(crc32.MakeTable(crc32.Castagnoli))
 	tr := io.TeeReader(r, checkSum)
@@ -444,6 +451,10 @@ func (c *codec) readTransactionsSection(tr io.Reader, budget *readingBudget, cou
 }
 
 func (c *codec) readDynamicBlockSection(tr io.Reader, budget *readingBudget, count uint32) ([][]byte, uint32, error) {
+	if uint32(budget.limit) < count {
+		return nil, 0, fmt.Errorf("section element count is invalid. attempting to read %d elements in block section while size budget is only %d", count, budget.limit)
+	}
+
 	chunks := make([][]byte, 0, count)
 	for i := 0; i < cap(chunks); i++ {
 		chunk, err := readChunk(tr, budget)
@@ -480,6 +491,7 @@ func (cw *checksumWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// TODO V1 will be deleted when: https://tree.taiga.io/project/orbs-network/us/681
 type readingBudget struct {
 	limit     int
 	bytesRead int

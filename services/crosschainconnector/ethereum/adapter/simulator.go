@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package adapter
 
 import (
@@ -9,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
+	"github.com/orbs-network/orbs-network-go/instrumentation/metric"
 	"math/big"
 	"sync"
 )
@@ -27,7 +34,7 @@ func NewEthereumSimulatorConnection(logger log.BasicLogger) *EthereumSimulator {
 	// Generate a new random account and a funded simulator
 	key, err := crypto.GenerateKey()
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 
 	e := &EthereumSimulator{
@@ -73,4 +80,7 @@ func (es *EthereumSimulator) Commit() {
 
 func (es *EthereumSimulator) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	return nil, nil
+}
+
+func (c *EthereumSimulator) ReportConnectionStatus(ctx context.Context, registry metric.Registry, logger log.BasicLogger) {
 }

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -10,7 +16,7 @@ import (
 
 func TestInitSetsLastCommittedBlockHeightToZero(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().withSyncBroadcast(1).start(ctx)
+		harness := newBlockStorageHarness(t).withSyncBroadcast(1).start(ctx)
 
 		val, err := harness.blockStorage.GetLastCommittedBlockHeight(ctx, &services.GetLastCommittedBlockHeightInput{})
 		require.NoError(t, err)
@@ -24,7 +30,7 @@ func TestInitSetsLastCommittedBlockHeightToZero(t *testing.T) {
 
 func TestInitSetsLastCommittedBlockHeightFromPersistence(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().withSyncBroadcast(1)
+		harness := newBlockStorageHarness(t).withSyncBroadcast(1)
 		now := harness.setupCustomBlocksForInit()
 		harness = harness.start(ctx)
 

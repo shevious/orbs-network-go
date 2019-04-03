@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package config
 
 import (
@@ -7,7 +13,7 @@ import (
 	"time"
 )
 
-type hardCodedFederationNode struct {
+type hardCodedValidatorNode struct {
 	nodeAddress primitives.NodeAddress
 }
 
@@ -25,7 +31,7 @@ type NodeConfigValue struct {
 
 type config struct {
 	kv                      map[string]NodeConfigValue
-	federationNodes         map[string]FederationNode
+	genesisValidatorNodes   map[string]ValidatorNode
 	gossipPeers             map[string]GossipPeer
 	nodeAddress             primitives.NodeAddress
 	nodePrivateKey          primitives.EcdsaSecp256K1PrivateKey
@@ -43,6 +49,7 @@ const (
 
 	LEAN_HELIX_CONSENSUS_ROUND_TIMEOUT_INTERVAL = "LEAN_HELIX_CONSENSUS_ROUND_TIMEOUT_INTERVAL"
 	LEAN_HELIX_CONSENSUS_MINIMUM_COMMITTEE_SIZE = "LEAN_HELIX_CONSENSUS_MINIMUM_COMMITTEE_SIZE"
+	LEAN_HELIX_CONSENSUS_MAXIMUM_COMMITTEE_SIZE = "LEAN_HELIX_CONSENSUS_MAXIMUM_COMMITTEE_SIZE"
 	LEAN_HELIX_SHOW_DEBUG                       = "LEAN_HELIX_SHOW_DEBUG"
 
 	BLOCK_SYNC_NUM_BLOCKS_IN_BATCH      = "BLOCK_SYNC_NUM_BLOCKS_IN_BATCH"
@@ -77,15 +84,19 @@ const (
 	PUBLIC_API_SEND_TRANSACTION_TIMEOUT = "PUBLIC_API_SEND_TRANSACTION_TIMEOUT"
 	PUBLIC_API_NODE_SYNC_WARNING_TIME   = "PUBLIC_API_NODE_SYNC_WARNING_TIME"
 
-	PROCESSOR_ARTIFACT_PATH = "PROCESSOR_ARTIFACT_PATH"
+	PROCESSOR_ARTIFACT_PATH               = "PROCESSOR_ARTIFACT_PATH"
+	PROCESSOR_SANITIZE_DEPLOYED_CONTRACTS = "PROCESSOR_SANITIZE_DEPLOYED_CONTRACTS"
 
 	METRICS_REPORT_INTERVAL = "METRICS_REPORT_INTERVAL"
 
-	ETHEREUM_ENDPOINT = "ETHEREUM_ENDPOINT"
+	ETHEREUM_ENDPOINT                  = "ETHEREUM_ENDPOINT"
+	ETHEREUM_FINALITY_TIME_COMPONENT   = "ETHEREUM_FINALITY_TIME_COMPONENT"
+	ETHEREUM_FINALITY_BLOCKS_COMPONENT = "ETHEREUM_FINALITY_BLOCKS_COMPONENT"
 
 	LOGGER_HTTP_ENDPOINT            = "LOGGER_HTTP_ENDPOINT"
 	LOGGER_BULK_SIZE                = "LOGGER_BULK_SIZE"
 	LOGGER_FILE_TRUNCATION_INTERVAL = "LOGGER_FILE_TRUNCATION_INTERVAL"
+	LOGGER_FULL_LOG                 = "LOGGER_FULL_LOG"
 
 	BLOCK_STORAGE_FILE_SYSTEM_DATA_DIR                = "BLOCK_STORAGE_FILE_SYSTEM_DATA_DIR"
 	BLOCK_STORAGE_FILE_SYSTEM_MAX_BLOCK_SIZE_IN_BYTES = "BLOCK_STORAGE_FILE_SYSTEM_MAX_BLOCK_SIZE_IN_BYTES"
@@ -95,8 +106,8 @@ const (
 	HTTP_ADDRESS = "HTTP_ADDRESS"
 )
 
-func NewHardCodedFederationNode(nodeAddress primitives.NodeAddress) FederationNode {
-	return &hardCodedFederationNode{
+func NewHardCodedValidatorNode(nodeAddress primitives.NodeAddress) ValidatorNode {
+	return &hardCodedValidatorNode{
 		nodeAddress: nodeAddress,
 	}
 }
@@ -153,8 +164,8 @@ func (c *config) SetActiveConsensusAlgo(algoType consensus.ConsensusAlgoType) mu
 	return c
 }
 
-func (c *config) SetFederationNodes(nodes map[string]FederationNode) mutableNodeConfig {
-	c.federationNodes = nodes
+func (c *config) SetGenesisValidatorNodes(nodes map[string]ValidatorNode) mutableNodeConfig {
+	c.genesisValidatorNodes = nodes
 	return c
 }
 
@@ -163,7 +174,7 @@ func (c *config) SetGossipPeers(gossipPeers map[string]GossipPeer) mutableNodeCo
 	return c
 }
 
-func (c *hardCodedFederationNode) NodeAddress() primitives.NodeAddress {
+func (c *hardCodedValidatorNode) NodeAddress() primitives.NodeAddress {
 	return c.nodeAddress
 }
 
@@ -195,15 +206,11 @@ func (c *config) NetworkType() protocol.SignerNetworkType {
 	return protocol.SignerNetworkType(c.kv[NETWORK_TYPE].Uint32Value)
 }
 
-func (c *config) NetworkSize(asOfBlock uint64) uint32 {
-	return uint32(len(c.federationNodes))
+func (c *config) GenesisValidatorNodes() map[string]ValidatorNode {
+	return c.genesisValidatorNodes
 }
 
-func (c *config) FederationNodes(asOfBlock uint64) map[string]FederationNode {
-	return c.federationNodes
-}
-
-func (c *config) GossipPeers(asOfBlock uint64) map[string]GossipPeer {
+func (c *config) GossipPeers() map[string]GossipPeer {
 	return c.gossipPeers
 }
 
@@ -315,6 +322,10 @@ func (c *config) ProcessorArtifactPath() string {
 	return c.kv[PROCESSOR_ARTIFACT_PATH].StringValue
 }
 
+func (c *config) ProcessorSanitizeDeployedContracts() bool {
+	return c.kv[PROCESSOR_SANITIZE_DEPLOYED_CONTRACTS].BoolValue
+}
+
 func (c *config) GossipListenPort() uint16 {
 	return uint16(c.kv[GOSSIP_LISTEN_PORT].Uint32Value)
 }
@@ -327,10 +338,6 @@ func (c *config) GossipNetworkTimeout() time.Duration {
 	return c.kv[GOSSIP_NETWORK_TIMEOUT].DurationValue
 }
 
-func (c *config) MetricsReportInterval() time.Duration {
-	return c.kv[METRICS_REPORT_INTERVAL].DurationValue
-}
-
 func (c *config) BenchmarkConsensusRequiredQuorumPercentage() uint32 {
 	return c.kv[BENCHMARK_CONSENSUS_REQUIRED_QUORUM_PERCENTAGE].Uint32Value
 }
@@ -339,8 +346,20 @@ func (c *config) LeanHelixConsensusMinimumCommitteeSize() uint32 {
 	return c.kv[LEAN_HELIX_CONSENSUS_MINIMUM_COMMITTEE_SIZE].Uint32Value
 }
 
+func (c *config) LeanHelixConsensusMaximumCommitteeSize() uint32 {
+	return c.kv[LEAN_HELIX_CONSENSUS_MAXIMUM_COMMITTEE_SIZE].Uint32Value
+}
+
 func (c *config) EthereumEndpoint() string {
 	return c.kv[ETHEREUM_ENDPOINT].StringValue
+}
+
+func (c *config) EthereumFinalityTimeComponent() time.Duration {
+	return c.kv[ETHEREUM_FINALITY_TIME_COMPONENT].DurationValue
+}
+
+func (c *config) EthereumFinalityBlocksComponent() uint32 {
+	return c.kv[ETHEREUM_FINALITY_BLOCKS_COMPONENT].Uint32Value
 }
 
 func (c *config) LoggerHttpEndpoint() string {
@@ -353,6 +372,10 @@ func (c *config) LoggerBulkSize() uint32 {
 
 func (c *config) LoggerFileTruncationInterval() time.Duration {
 	return c.kv[LOGGER_FILE_TRUNCATION_INTERVAL].DurationValue
+}
+
+func (c *config) LoggerFullLog() bool {
+	return c.kv[LOGGER_FULL_LOG].BoolValue
 }
 
 func (c *config) BlockStorageFileSystemDataDir() string {

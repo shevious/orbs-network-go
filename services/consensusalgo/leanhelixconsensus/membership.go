@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package leanhelixconsensus
 
 import (
@@ -6,16 +12,18 @@ import (
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/services"
+	"strconv"
+	"strings"
 )
 
 type membership struct {
 	memberId         primitives.NodeAddress
 	consensusContext services.ConsensusContext
 	logger           log.BasicLogger
-	committeeSize    uint32
+	maxCommitteeSize uint32
 }
 
-func NewMembership(logger log.BasicLogger, memberId primitives.NodeAddress, consensusContext services.ConsensusContext, committeeSize uint32) *membership {
+func NewMembership(logger log.BasicLogger, memberId primitives.NodeAddress, consensusContext services.ConsensusContext, maxCommitteeSize uint32) *membership {
 	if consensusContext == nil {
 		panic("consensusContext cannot be nil")
 	}
@@ -24,28 +32,38 @@ func NewMembership(logger log.BasicLogger, memberId primitives.NodeAddress, cons
 		consensusContext: consensusContext,
 		logger:           logger,
 		memberId:         memberId,
-		committeeSize:    committeeSize,
+		maxCommitteeSize: maxCommitteeSize,
 	}
 }
 func (m *membership) MyMemberId() lhprimitives.MemberId {
 	return lhprimitives.MemberId(m.memberId)
 }
 
-func (m *membership) RequestOrderedCommittee(ctx context.Context, blockHeight lhprimitives.BlockHeight, seed uint64) []lhprimitives.MemberId {
+func nodeAddressesToCommaSeparatedString(nodeAddresses []primitives.NodeAddress) string {
+	addrs := make([]string, 0)
+	for _, nodeAddress := range nodeAddresses {
+		addrs = append(addrs, nodeAddress.String())
+	}
+	return strings.Join(addrs, ",")
+}
 
+func (m *membership) RequestOrderedCommittee(ctx context.Context, blockHeight lhprimitives.BlockHeight, seed uint64) ([]lhprimitives.MemberId, error) {
 	res, err := m.consensusContext.RequestOrderingCommittee(ctx, &services.RequestCommitteeInput{
 		CurrentBlockHeight: primitives.BlockHeight(blockHeight),
 		RandomSeed:         seed,
-		MaxCommitteeSize:   m.committeeSize,
+		MaxCommitteeSize:   m.maxCommitteeSize,
 	})
 	if err != nil {
 		m.logger.Info(" failed RequestOrderedCommittee()", log.Error(err))
-		return nil
+		return nil, err
 	}
 
 	nodeAddresses := toMemberIds(res.NodeAddresses)
+	committeeMembersStr := nodeAddressesToCommaSeparatedString(res.NodeAddresses)
+	// random-seed printed as string for logz.io, do not change it back to log.Uint64()
+	m.logger.Info("Received committee members", log.BlockHeight(primitives.BlockHeight(blockHeight)), log.String("random-seed", strconv.FormatUint(seed, 10)), log.String("committee-members", committeeMembersStr))
 
-	return nodeAddresses
+	return nodeAddresses, nil
 }
 
 func toMemberIds(nodeAddresses []primitives.NodeAddress) []lhprimitives.MemberId {

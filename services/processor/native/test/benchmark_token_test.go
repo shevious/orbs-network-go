@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -11,7 +17,7 @@ import (
 
 func TestBenchmarkToken_GetBalancePostInit(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 		targetAddress := builders.ClientAddressForEd25519SignerForTests(1)
 		const balance = uint64(3)
 
@@ -30,7 +36,7 @@ func TestBenchmarkToken_GetBalancePostInit(t *testing.T) {
 
 func TestBenchmarkToken_TransferThenGetBalance(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 		callerAddress := builders.ClientAddressForEd25519SignerForTests(0)
 		targetAddress := builders.ClientAddressForEd25519SignerForTests(1)
 		const amount, callerBalance, targetBalance = uint64(3), uint64(20), uint64(10)
@@ -65,7 +71,7 @@ func TestBenchmarkToken_TransferThenGetBalance(t *testing.T) {
 
 func TestBenchmarkToken_TransferLargerThanAvailableFails(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness()
+		h := newHarness(t)
 		callerAddress := builders.ClientAddressForEd25519SignerForTests(0)
 		targetAddress := builders.ClientAddressForEd25519SignerForTests(1)
 		const amount, callerBalance = uint64(9999), uint64(20)

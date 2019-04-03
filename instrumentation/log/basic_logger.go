@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package log
 
 import (
@@ -17,6 +23,7 @@ type BasicLogger interface {
 	Tags() []*Field
 	WithOutput(writer ...Output) BasicLogger
 	WithFilters(filter ...Filter) BasicLogger
+	Filters() []Filter
 }
 
 type basicLogger struct {
@@ -139,6 +146,10 @@ func (b *basicLogger) WithOutput(writers ...Output) BasicLogger {
 func (b *basicLogger) WithFilters(filter ...Filter) BasicLogger {
 	b.filters = append(b.filters, filter...) // this is not thread safe, I know
 	return b
+}
+
+func (b *basicLogger) Filters() []Filter {
+	return b.filters
 }
 
 func flattenParams(params []*Field) []*Field {

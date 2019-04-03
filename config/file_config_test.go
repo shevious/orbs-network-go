@@ -1,6 +1,13 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package config
 
 import (
+	"encoding/hex"
 	"github.com/orbs-network/orbs-network-go/test/crypto/keys"
 	"github.com/orbs-network/orbs-spec/types/go/protocol/consensus"
 	"github.com/stretchr/testify/require"
@@ -86,26 +93,30 @@ func TestSetActiveConsensusAlgo(t *testing.T) {
 	require.EqualValues(t, 999, cfg.ActiveConsensusAlgo())
 }
 
-func TestSetFederationNodes(t *testing.T) {
+func TestSetGenesisValidatorNodes(t *testing.T) {
 	cfg, err := newEmptyFileConfig(`{
-	"federation-nodes": [
-    {"address":"a328846cd5b4979d68a8c58a9bdfeee657b34de7","ip":"192.168.199.2","port":4400},
-    {"address":"d27e2e7398e2582f63d0800330010b3e58952ff6","ip":"192.168.199.3","port":4400},
-    {"address":"6e2cb55e4cbe97bf5b1e731d51cc2c285d83cbf9","ip":"192.168.199.4","port":4400}
+	"genesis-validator-addresses": [
+    "a328846cd5b4979d68a8c58a9bdfeee657b34de7",
+    "d27e2e7398e2582f63d0800330010b3e58952ff6",
+    "6e2cb55e4cbe97bf5b1e731d51cc2c285d83cbf9"
 	]
 }`)
 
 	require.NotNil(t, cfg)
 	require.NoError(t, err)
-	require.EqualValues(t, 3, len(cfg.FederationNodes(0)))
+	require.EqualValues(t, 3, len(cfg.GenesisValidatorNodes()))
+
+	for k, v := range cfg.GenesisValidatorNodes() {
+		t.Log(hex.EncodeToString([]byte(k)), v.NodeAddress())
+	}
 
 	keyPair := keys.EcdsaSecp256K1KeyPairForTests(0)
 
-	node1 := &hardCodedFederationNode{
+	node1 := &hardCodedValidatorNode{
 		nodeAddress: keyPair.NodeAddress(),
 	}
 
-	require.EqualValues(t, node1, cfg.FederationNodes(0)[keyPair.NodeAddress().KeyForMap()])
+	require.EqualValues(t, node1, cfg.GenesisValidatorNodes()[keyPair.NodeAddress().KeyForMap()])
 }
 
 func TestSetGossipPeers(t *testing.T) {
@@ -119,7 +130,7 @@ func TestSetGossipPeers(t *testing.T) {
 
 	require.NotNil(t, cfg)
 	require.NoError(t, err)
-	require.EqualValues(t, 3, len(cfg.GossipPeers(0)))
+	require.EqualValues(t, 3, len(cfg.GossipPeers()))
 
 	keyPair := keys.EcdsaSecp256K1KeyPairForTests(0)
 
@@ -128,7 +139,15 @@ func TestSetGossipPeers(t *testing.T) {
 		gossipPort:     4400,
 	}
 
-	require.EqualValues(t, node1, cfg.GossipPeers(0)[keyPair.NodeAddress().KeyForMap()])
+	require.EqualValues(t, node1, cfg.GossipPeers()[keyPair.NodeAddress().KeyForMap()])
+}
+
+func TestSetEthereumFinalityBlocksComponent(t *testing.T) {
+	cfg, err := newEmptyFileConfig(`{"ethereum-finality-blocks-component": 17}`)
+
+	require.NotNil(t, cfg)
+	require.NoError(t, err)
+	require.EqualValues(t, 17, cfg.EthereumFinalityBlocksComponent())
 }
 
 func TestSetGossipPort(t *testing.T) {
@@ -140,14 +159,14 @@ func TestSetGossipPort(t *testing.T) {
 }
 
 func TestMergeWithFileConfig(t *testing.T) {
-	nodes := make(map[string]FederationNode)
+	nodes := make(map[string]ValidatorNode)
 	keyPair := keys.EcdsaSecp256K1KeyPairForTests(2)
 
 	cfg := ForAcceptanceTestNetwork(nodes,
 		keyPair.NodeAddress(),
-		consensus.CONSENSUS_ALGO_TYPE_BENCHMARK_CONSENSUS, 30, 100)
+		consensus.CONSENSUS_ALGO_TYPE_BENCHMARK_CONSENSUS, 30, 100, 42)
 
-	require.EqualValues(t, 0, len(cfg.FederationNodes(0)))
+	require.EqualValues(t, 0, len(cfg.GenesisValidatorNodes()))
 
 	cfg.MergeWithFileConfig(`
 {
@@ -160,6 +179,11 @@ func TestMergeWithFileConfig(t *testing.T) {
 	"benchmark-consensus-constant-leader": "a328846cd5b4979d68a8c58a9bdfeee657b34de7",
 	"active-consensus-algo": 999,
 	"gossip-port": 4500,
+	"genesis-validator-addresses": [
+    "a328846cd5b4979d68a8c58a9bdfeee657b34de7",
+    "d27e2e7398e2582f63d0800330010b3e58952ff6",
+    "6e2cb55e4cbe97bf5b1e731d51cc2c285d83cbf9"
+	],
 	"federation-nodes": [
     {"address":"a328846cd5b4979d68a8c58a9bdfeee657b34de7","ip":"192.168.199.2","port":4400},
     {"address":"d27e2e7398e2582f63d0800330010b3e58952ff6","ip":"192.168.199.3","port":4400},
@@ -170,7 +194,7 @@ func TestMergeWithFileConfig(t *testing.T) {
 
 	newKeyPair := keys.EcdsaSecp256K1KeyPairForTests(0)
 
-	require.EqualValues(t, 3, len(cfg.FederationNodes(0)))
+	require.EqualValues(t, 3, len(cfg.GenesisValidatorNodes()))
 	require.EqualValues(t, true, cfg.LeanHelixShowDebug())
 	require.EqualValues(t, true, cfg.Profiling())
 	require.EqualValues(t, newKeyPair.NodeAddress(), cfg.NodeAddress())
@@ -183,8 +207,15 @@ func TestConfig_EthereumEndpoint(t *testing.T) {
 	require.EqualValues(t, "http://172.31.1.100:8545", cfg.EthereumEndpoint())
 }
 
+func TestConfig_ContractCodeSanitation(t *testing.T) {
+	cfg, err := newEmptyFileConfig(`{"PROCESSOR-SANITIZE-DEPLOYED-CONTRACTS":true}`)
+	require.NoError(t, err)
+
+	require.EqualValues(t, true, cfg.ProcessorSanitizeDeployedContracts())
+}
+
 func TestConfig_E2EConfigFile(t *testing.T) {
-	content, err := ioutil.ReadFile("../docker/test/e2e-config/node1.json")
+	content, err := ioutil.ReadFile("../docker/test/benchmark-config/node1.json")
 	require.NoError(t, err, "failed reading config file")
 	cfg, err := newEmptyFileConfig(string(content))
 	require.NoError(t, err, "failed parsing config file")

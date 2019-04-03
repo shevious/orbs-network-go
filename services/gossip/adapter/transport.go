@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package adapter
 
 import (
@@ -16,7 +22,7 @@ type TransportData struct {
 
 type Transport interface {
 	RegisterListener(listener TransportListener, listenerNodeAddress primitives.NodeAddress)
-	Send(ctx context.Context, data *TransportData) error
+	Send(ctx context.Context, data *TransportData) error // TODO don't return error. misleading meaning. use panics instead
 }
 
 type TransportListener interface {
@@ -36,4 +42,11 @@ type ErrTransportFailed struct {
 
 func (e *ErrTransportFailed) Error() string {
 	return fmt.Sprintf("transport failed to send: %v", e.Data)
+}
+
+func (d *TransportData) TotalSize() (res int) {
+	for _, payload := range d.Payloads {
+		res += len(payload)
+	}
+	return
 }

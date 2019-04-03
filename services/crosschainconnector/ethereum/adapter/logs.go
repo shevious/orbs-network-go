@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package adapter
 
 import (
@@ -15,15 +21,7 @@ type TransactionLog struct {
 	Data            []byte   // non-indexed fields
 	RepackedData    []byte
 	BlockNumber     uint64
-}
-
-// TODO(v1): this assumes that in events Data every input is 32 bytes (eg. no tuples), is this always the case? [OdedW]
-func (l *TransactionLog) PackedDataArgumentAt(index int) ([]byte, error) {
-	from := index * 32
-	if from+32 > len(l.Data) {
-		return nil, errors.Errorf("request index %d is out of bounds, got %d bytes", index, len(l.Data))
-	}
-	return l.Data[from : from+32], nil
+	TxIndex         uint32
 }
 
 func (c *connectorCommon) GetTransactionLogs(ctx context.Context, txHash primitives.Uint256, eventSignature []byte) ([]*TransactionLog, error) {
@@ -51,6 +49,7 @@ func (c *connectorCommon) GetTransactionLogs(ctx context.Context, txHash primiti
 				PackedTopics:    topics,
 				Data:            log.Data,
 				BlockNumber:     log.BlockNumber,
+				TxIndex:         uint32(log.TxIndex),
 				ContractAddress: log.Address.Bytes(),
 			}
 			eventLogs = append(eventLogs, transactionLog)

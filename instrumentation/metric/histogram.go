@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package metric
 
 import (
@@ -33,16 +39,22 @@ func floatToMillis(nanoseconds float64) float64 {
 	return nanoseconds / 1e+6
 }
 
-func newHistogram(name string, max int64) *Histogram {
+func newHistogram(name string, max int64, n int) *Histogram {
 	return &Histogram{
 		namedMetric: namedMetric{name: name},
-		histo:       hdrhistogram.NewWindowed(5, 0, max, 1),
+		histo:       hdrhistogram.NewWindowed(n, 0, max, 1),
 	}
 }
 
 func (h *Histogram) RecordSince(t time.Time) {
 	d := time.Since(t).Nanoseconds()
 	if err := h.histo.Current.RecordValue(int64(d)); err != nil {
+		atomic.AddInt64(&h.overflowCount, 1)
+	}
+}
+
+func (h *Histogram) Record(measurement int64) {
+	if err := h.histo.Current.RecordValue(measurement); err != nil {
 		atomic.AddInt64(&h.overflowCount, 1)
 	}
 }
@@ -71,7 +83,7 @@ func (h *Histogram) String() string {
 }
 
 func (h *Histogram) Export() exportedMetric {
-	histo := h.histo.Current
+	histo := h.histo.Merge()
 
 	return &histogramExport{
 		h.name,

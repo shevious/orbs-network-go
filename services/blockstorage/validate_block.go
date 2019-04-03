@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package blockstorage
 
 import (
@@ -25,18 +31,18 @@ func (s *service) ValidateBlockForCommit(ctx context.Context, input *services.Va
 		return nil, err
 	}
 
-	if blockHeightError := s.validateBlockHeight(input.BlockPair, lastCommittedBlock); blockHeightError != nil {
+	if blockHeightError := s.validateConsecutiveBlockHeight(input.BlockPair, lastCommittedBlock); blockHeightError != nil {
 		return nil, blockHeightError
 	}
 
-	if err := s.notifyConsensusAlgos(
-		ctx,
-		lastCommittedBlock,
-		input.BlockPair,
-		handlers.HANDLE_BLOCK_CONSENSUS_MODE_VERIFY_AND_UPDATE); err != nil {
-
-		logger.Error("ValidateBlockForCommit(): notifyConsensusAlgos() failed (block validation by consensus algo failed)", log.Error(err))
+	logger.Info("ValidateBlockForCommit calling notifyConsensusAlgos with VERIFY_AND_UPDATE", log.BlockHeight(input.BlockPair.TransactionsBlock.Header.BlockHeight()))
+	if err := s.notifyConsensusAlgos(ctx, lastCommittedBlock, input.BlockPair, handlers.HANDLE_BLOCK_CONSENSUS_MODE_VERIFY_AND_UPDATE); err != nil {
+		if ctx.Err() == nil { // this may fail rightfully on graceful shutdown (ctx.Done), we don't want to report an error in this case
+			logger.Error("ValidateBlockForCommit(): notifyConsensusAlgos() failed (block validation by consensus algo failed)", log.Error(err), log.Stringable("tx-block-header", input.BlockPair.TransactionsBlock.Header))
+		}
 		return nil, err
+	} else {
+		logger.Info("ValidateBlockForCommit returned from notifyConsensusAlgos with VERIFY_AND_UPDATE", log.BlockHeight(input.BlockPair.TransactionsBlock.Header.BlockHeight()))
 	}
 
 	return &services.ValidateBlockForCommitOutput{}, nil
@@ -52,7 +58,7 @@ func (s *service) validateBlockDoesNotExist(ctx context.Context, txBlockHeader *
 		// we can't check for fork because we don't have the tx header of the old block easily accessible
 		errorMessage := "block already in storage, skipping"
 		logger.Info(errorMessage, log.BlockHeight(currentBlockHeight), log.Stringable("attempted-block-height", attemptedBlockHeight))
-		return false, errors.New(errorMessage)
+		return false, nil
 	} else if attemptedBlockHeight == currentBlockHeight {
 		// we can check for fork because we do have the tx header of the old block easily accessible
 		if txBlockHeader.Timestamp() != getBlockTimestamp(lastCommittedBlock) {
@@ -79,7 +85,7 @@ func (s *service) validateBlockDoesNotExist(ctx context.Context, txBlockHeader *
 	return true, nil
 }
 
-func (s *service) validateBlockHeight(blockPair *protocol.BlockPairContainer, lastCommittedBlock *protocol.BlockPairContainer) error {
+func (s *service) validateConsecutiveBlockHeight(blockPair *protocol.BlockPairContainer, lastCommittedBlock *protocol.BlockPairContainer) error {
 	expectedBlockHeight := getBlockHeight(lastCommittedBlock) + 1
 
 	txBlockHeader := blockPair.TransactionsBlock.Header
@@ -89,7 +95,7 @@ func (s *service) validateBlockHeight(blockPair *protocol.BlockPairContainer, la
 		return fmt.Errorf("block pair height mismatch. transactions height is %d, results height is %d", txBlockHeader.BlockHeight(), rsBlockHeader.BlockHeight())
 	}
 
-	if txBlockHeader.BlockHeight() > expectedBlockHeight {
+	if txBlockHeader.BlockHeight() != expectedBlockHeight {
 		return fmt.Errorf("block height is %d, expected %d", txBlockHeader.BlockHeight(), expectedBlockHeight)
 	}
 
@@ -128,7 +134,7 @@ func (s *service) notifyConsensusAlgos(
 	s.consensusBlocksHandlers.RLock()
 	defer s.consensusBlocksHandlers.RUnlock()
 
-	var latestErr error
+	var verifyErrors []error
 	verifiedCount := 0
 	for _, handler := range s.consensusBlocksHandlers.handlers {
 		_, latestErr := handler.HandleBlockConsensus(ctx, &handlers.HandleBlockConsensusInput{
@@ -138,18 +144,16 @@ func (s *service) notifyConsensusAlgos(
 			PrevCommittedBlockPair: prevBlockPair, // TODO (v1) rename to HandleBlockConsensusInput.PrevCommittedBlockPair to PrevBlockPair
 		})
 
-		if latestErr != nil {
-			s.logger.Info("notifyConsensusAlgos(): failed HandleBlockConsensus()", log.Error(latestErr))
-		}
-
 		if verifyMode && latestErr == nil {
 			verifiedCount++
+		} else {
+			verifyErrors = append(verifyErrors, latestErr)
 		}
 	}
 
-	if verifyMode && verifiedCount == 0 {
-		if latestErr != nil {
-			s.logger.Info("notifyConsensusAlgos() error", log.Error(latestErr))
+	if verifyMode && verifiedCount == 0 && ctx.Err() == nil { // only log errors if system is not shutting down
+		for _, err := range verifyErrors {
+			s.logger.Error("consensus algo refused to validate block", log.Error(err))
 		}
 		return errors.Errorf("all consensus %d algos refused to validate the block", len(s.consensusBlocksHandlers.handlers))
 	}

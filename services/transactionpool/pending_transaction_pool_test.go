@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -116,7 +122,7 @@ func TestPendingTransactionPoolClearsExpiredTransactions(t *testing.T) {
 		tx3 := builders.TransferTransaction().WithTimestamp(time.Now().Add(-31 * time.Minute)).Build()
 		add(p, tx1, tx2, tx3)
 
-		p.clearTransactionsOlderThan(ctx, time.Now().Add(-30*time.Minute))
+		p.clearTransactionsOlderThan(ctx, primitives.TimestampNano(time.Now().Add(-30*time.Minute).UnixNano()))
 
 		require.True(t, p.has(tx1), "cleared non-expired transaction")
 		require.True(t, p.has(tx2), "cleared non-expired transaction")

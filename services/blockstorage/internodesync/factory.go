@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package internodesync
 
 import (
@@ -108,12 +114,12 @@ func (f *stateFactory) CreateIdleState() syncState {
 
 func (f *stateFactory) CreateCollectingAvailabilityResponseState() syncState {
 	return &collectingAvailabilityResponsesState{
-		factory:      f,
-		gossipClient: newBlockSyncGossipClient(f.gossip, f.storage, f.logger, f.config.BlockSyncNumBlocksInBatch, f.config.NodeAddress),
-		createTimer:  f.createCollectTimeoutTimer,
-		logger:       f.logger,
-		conduit:      f.conduit,
-		metrics:      f.metrics.collectingStateMetrics,
+		factory:     f,
+		client:      newBlockSyncGossipClient(f.gossip, f.storage, f.logger, f.config.BlockSyncNumBlocksInBatch, f.config.NodeAddress),
+		createTimer: f.createCollectTimeoutTimer,
+		logger:      f.logger,
+		conduit:     f.conduit,
+		metrics:     f.metrics.collectingStateMetrics,
 	}
 }
 
@@ -130,7 +136,7 @@ func (f *stateFactory) CreateWaitingForChunksState(sourceNodeAddress primitives.
 	return &waitingForChunksState{
 		sourceNodeAddress: sourceNodeAddress,
 		factory:           f,
-		gossipClient:      newBlockSyncGossipClient(f.gossip, f.storage, f.logger, f.config.BlockSyncNumBlocksInBatch, f.config.NodeAddress),
+		client:            newBlockSyncGossipClient(f.gossip, f.storage, f.logger, f.config.BlockSyncNumBlocksInBatch, f.config.NodeAddress),
 		createTimer:       f.createWaitForChunksTimeoutTimer,
 		logger:            f.logger,
 		conduit:           f.conduit,
@@ -157,65 +163,69 @@ type stateMetrics struct {
 }
 
 type idleStateMetrics struct {
-	stateLatency *metric.Histogram
-	timesReset   *metric.Gauge
-	timesExpired *metric.Gauge
+	timeSpentInState *metric.Histogram
+	timesReset       *metric.Gauge
+	timesExpired     *metric.Gauge
 }
 
 type collectingStateMetrics struct {
-	stateLatency    *metric.Histogram
-	timesSuccessful *metric.Gauge
+	timeSpentInState                         *metric.Histogram
+	timesSucceededSendingAvailabilityRequest *metric.Gauge
+	timesFailedSendingAvailabilityRequest    *metric.Gauge
 }
 
 type finishedCollectingStateMetrics struct {
-	stateLatency       *metric.Histogram
-	timesNoResponses   *metric.Gauge
-	timesWithResponses *metric.Gauge
+	timeSpentInState               *metric.Histogram
+	finishedWithNoResponsesCount   *metric.Gauge
+	finishedWithSomeResponsesCount *metric.Gauge
 }
 
 type waitingStateMetrics struct {
-	stateLatency    *metric.Histogram
-	timesTimeout    *metric.Gauge
-	timesSuccessful *metric.Gauge
-	timesByzantine  *metric.Gauge
+	timeSpentInState *metric.Histogram
+	timesTimeout     *metric.Gauge
+	timesSuccessful  *metric.Gauge
+	timesByzantine   *metric.Gauge
 }
 
 type processingStateMetrics struct {
-	stateLatency           *metric.Histogram
+	timeSpentInState       *metric.Histogram
 	blocksRate             *metric.Rate
 	committedBlocks        *metric.Gauge
 	failedCommitBlocks     *metric.Gauge
 	failedValidationBlocks *metric.Gauge
+	lastCommittedTime      *metric.Gauge
 }
 
 func newStateMetrics(factory metric.Factory) *stateMetrics {
 	return &stateMetrics{
 		idleStateMetrics: idleStateMetrics{
-			stateLatency: factory.NewLatency("BlockSync.Idle.StateLatency", 24*30*time.Hour),
-			timesReset:   factory.NewGauge("BlockSync.Idle.TimesReset"),
-			timesExpired: factory.NewGauge("BlockSync.Idle.TimesExpired"),
+			timeSpentInState: factory.NewLatency("BlockSync.IdleState.Duration.Millis", 24*30*time.Hour),
+			timesReset:       factory.NewGauge("BlockSync.IdleState.ResetBackToIdle.Count"),
+			timesExpired:     factory.NewGauge("BlockSync.IdleState.StartedBlockSync.Count"),
 		},
 		collectingStateMetrics: collectingStateMetrics{
-			stateLatency:    factory.NewLatency("BlockSync.Collecting.StateLatency", 24*30*time.Hour),
-			timesSuccessful: factory.NewGauge("BlockSync.Collecting.SuccessCount"),
+			timeSpentInState:                         factory.NewLatency("BlockSync.CollectingAvailabilityResponsesState.Duration.Millis", 24*30*time.Hour),
+			timesSucceededSendingAvailabilityRequest: factory.NewGauge("BlockSync.CollectingAvailabilityResponsesState.BroadcastSendSuccess.Count"),
+			timesFailedSendingAvailabilityRequest:    factory.NewGauge("BlockSync.CollectingAvailabilityResponsesState.BroadcastSendFailure.Count"),
 		},
 		finishedCollectingStateMetrics: finishedCollectingStateMetrics{
-			stateLatency:       factory.NewLatency("BlockSync.FinishedCollecting.StateLatency", 24*30*time.Hour),
-			timesNoResponses:   factory.NewGauge("BlockSync.FinishedCollecting.NoResponsesCount"),
-			timesWithResponses: factory.NewGauge("BlockSync.FinishedCollecting.WithResponsesCount"),
+			timeSpentInState:               factory.NewLatency("BlockSync.FinishedCollectingAvailabilityResponsesState.Duration.Millis", 24*30*time.Hour),
+			finishedWithNoResponsesCount:   factory.NewGauge("BlockSync.FinishedCollectingAvailabilityResponsesState.FinishedWithNoResponses.Count"),
+			finishedWithSomeResponsesCount: factory.NewGauge("BlockSync.FinishedCollectingAvailabilityResponsesState.FinishedWithSomeResponses.Count"),
 		},
 		waitingStateMetrics: waitingStateMetrics{
-			stateLatency:    factory.NewLatency("BlockSync.Waiting.StateLatency", 24*30*time.Hour),
-			timesByzantine:  factory.NewGauge("BlockSync.Waiting.ByzantineResponseCount"),
-			timesSuccessful: factory.NewGauge("BlockSync.Waiting.SuccessResponseCount"),
-			timesTimeout:    factory.NewGauge("BlockSync.Waiting.TimeoutCount"),
+			timeSpentInState: factory.NewLatency("BlockSync.WaitingForBlocksState.Duration.Millis", 24*30*time.Hour),
+			timesByzantine:   factory.NewGauge("BlockSync.WaitingForBlocksState.ReceivedBlocksFromByzantineSource.Count"),
+			timesSuccessful:  factory.NewGauge("BlockSync.WaitingForBlocksState.ReceivedBlocksFromExpectedSource.Count"),
+			timesTimeout:     factory.NewGauge("BlockSync.WaitingForBlocksState.TimedOutWithoutReceivingBlocks.Count"),
 		},
 		processingStateMetrics: processingStateMetrics{
-			stateLatency:           factory.NewLatency("BlockSync.Processing.StateLatency", 24*30*time.Hour),
-			blocksRate:             factory.NewRate("BlockSync.Processing.BlocksRate"),
-			committedBlocks:        factory.NewGauge("BlockSync.Processing.CommittedBlocks"),
-			failedCommitBlocks:     factory.NewGauge("BlockSync.Processing.FailedToCommitBlocks"),
-			failedValidationBlocks: factory.NewGauge("BlockSync.Processing.FailedToValidateBlocks"),
+			timeSpentInState:       factory.NewLatency("BlockSync.ProcessingBlocksState.Duration.Millis", 24*30*time.Hour),
+			blocksRate:             factory.NewRate("BlockSync.ProcessingBlocksState.BlocksReceived.PerSecond"),
+			committedBlocks:        factory.NewGauge("BlockSync.ProcessingBlocksState.CommittedBlocks.Count"),
+			failedCommitBlocks:     factory.NewGauge("BlockSync.ProcessingBlocksState.FailedToCommitBlocks.Count"),
+			failedValidationBlocks: factory.NewGauge("BlockSync.ProcessingBlocksState.FailedToValidateBlocks.Count"),
+			lastCommittedTime:      factory.NewGauge("BlockSync.ProcessingBlocksState.LastCommitted.TimeNano"),
 		},
 	}
 }

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package synchronization
 
 import (
@@ -51,25 +57,23 @@ func (t *periodicalTrigger) TimesTriggered() uint64 {
 
 func (t *periodicalTrigger) run(ctx context.Context) {
 	t.ticker = time.NewTicker(t.d)
-	go func() {
-		supervised.GoForever(ctx, t.logger, func() {
-			t.wgSync.Add(1)
-			defer t.wgSync.Done()
-			for {
-				select {
-				case <-t.ticker.C:
-					t.f()
-					atomic.AddUint64(&t.metrics.timesTriggered, 1)
-				case <-ctx.Done():
-					t.ticker.Stop()
-					if t.s != nil {
-						go t.s()
-					}
-					return
+	supervised.GoForever(ctx, t.logger, func() {
+		t.wgSync.Add(1)
+		defer t.wgSync.Done()
+		for {
+			select {
+			case <-t.ticker.C:
+				t.f()
+				atomic.AddUint64(&t.metrics.timesTriggered, 1)
+			case <-ctx.Done():
+				t.ticker.Stop()
+				if t.s != nil {
+					go t.s()
 				}
+				return
 			}
-		})
-	}()
+		}
+	})
 }
 
 func (t *periodicalTrigger) Stop() {

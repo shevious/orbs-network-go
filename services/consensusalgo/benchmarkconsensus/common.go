@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package benchmarkconsensus
 
 import (
@@ -39,7 +45,8 @@ func (s *service) setLastCommittedBlock(blockPair *protocol.BlockPairContainer, 
 }
 
 func (s *service) requiredQuorumSize() int {
-	return int(math.Ceil(float64(s.config.NetworkSize(0)) * float64(s.config.BenchmarkConsensusRequiredQuorumPercentage()) / 100))
+	networkSize := len(s.config.GenesisValidatorNodes())
+	return int(math.Ceil(float64(networkSize) * float64(s.config.BenchmarkConsensusRequiredQuorumPercentage()) / 100))
 }
 
 func (s *service) saveToBlockStorage(ctx context.Context, blockPair *protocol.BlockPairContainer) error {
@@ -63,21 +70,21 @@ func (s *service) validateBlockConsensus(blockPair *protocol.BlockPairContainer,
 	}
 	// correct block type
 	if !blockPair.TransactionsBlock.BlockProof.IsTypeBenchmarkConsensus() {
-		return errors.Errorf("BenchmarkConsensus: incorrect block proof type for transaction block: %v", blockPair.TransactionsBlock.BlockProof.Type())
+		return errors.Errorf("BenchmarkConsensus: incorrect block proof type for transaction block height %d: %v", blockPair.TransactionsBlock.Header.BlockHeight(), blockPair.TransactionsBlock.BlockProof.Type())
 	}
 	if !blockPair.ResultsBlock.BlockProof.IsTypeBenchmarkConsensus() {
-		return errors.Errorf("BenchmarkConsensus: incorrect block proof type for results block: %v", blockPair.ResultsBlock.BlockProof.Type())
+		return errors.Errorf("BenchmarkConsensus: incorrect block proof type for results block height %d: %v", blockPair.ResultsBlock.Header.BlockHeight(), blockPair.ResultsBlock.BlockProof.Type())
 	}
 
 	// prev block hash ptr (if given)
 	if prevCommittedBlockPair != nil {
 		prevTxHash := digest.CalcTransactionsBlockHash(prevCommittedBlockPair.TransactionsBlock)
 		if !blockPair.TransactionsBlock.Header.PrevBlockHashPtr().Equal(prevTxHash) {
-			return errors.Errorf("BenchmarkConsensus: transactions prev block hash does not match prev block: %s", prevTxHash)
+			return errors.Errorf("BenchmarkConsensus: transactions prev block hash does not match prev block height %d: %s", prevCommittedBlockPair.TransactionsBlock.Header.BlockHeight(), prevTxHash)
 		}
 		prevRxHash := digest.CalcResultsBlockHash(prevCommittedBlockPair.ResultsBlock)
 		if !blockPair.ResultsBlock.Header.PrevBlockHashPtr().Equal(prevRxHash) {
-			return errors.Errorf("BenchmarkConsensus: results prev block hash does not match prev block: %s", prevRxHash)
+			return errors.Errorf("BenchmarkConsensus: results prev block hash does not match prev block height %d: %s", prevCommittedBlockPair.ResultsBlock.Header.BlockHeight(), prevRxHash)
 		}
 	}
 

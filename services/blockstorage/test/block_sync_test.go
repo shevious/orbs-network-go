@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -18,7 +24,7 @@ import (
 // TODO(v1) move to unit tests
 func TestSyncSource_IgnoresRangesOfBlockSyncRequestAccordingToLocalBatchSettings(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().withSyncBroadcast(1).start(ctx)
+		harness := newBlockStorageHarness(t).withSyncBroadcast(1).start(ctx)
 
 		blocks := []*protocol.BlockPairContainer{
 			builders.BlockPair().WithHeight(primitives.BlockHeight(1)).WithBlockCreated(time.Now()).Build(),
@@ -68,62 +74,12 @@ func TestSyncSource_IgnoresRangesOfBlockSyncRequestAccordingToLocalBatchSettings
 
 func TestSyncPetitioner_BroadcastsBlockAvailabilityRequest(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().withSyncNoCommitTimeout(3 * time.Millisecond).start(ctx)
-
+		harness := newBlockStorageHarness(t).withSyncNoCommitTimeout(3 * time.Millisecond)
 		harness.gossip.When("BroadcastBlockAvailabilityRequest", mock.Any, mock.Any).Return(nil, nil).AtLeast(2)
 
+		harness.start(ctx)
+
 		harness.verifyMocks(t, 2)
-	})
-}
-
-func TestSyncPetitioner_CompleteSyncFlow(t *testing.T) {
-	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
-			withSyncCollectResponsesTimeout(50 * time.Millisecond).
-			withSyncCollectChunksTimeout(50 * time.Millisecond).
-			withSyncBroadcast(1).
-			withValidateConsensusAlgos(4).
-			start(ctx)
-
-		// latch until we sent the broadcast (meaning the state machine is now at collecting car state
-		require.NoError(t, test.EventuallyVerify(200*time.Millisecond, harness.gossip), "availability response stage failed")
-
-		senderKeyPair := keys.EcdsaSecp256K1KeyPairForTests(7)
-		blockAvailabilityResponse := builders.BlockAvailabilityResponseInput().
-			WithLastCommittedBlockHeight(primitives.BlockHeight(4)).
-			WithFirstBlockHeight(primitives.BlockHeight(1)).
-			WithLastBlockHeight(primitives.BlockHeight(4)).
-			WithSenderNodeAddress(senderKeyPair.NodeAddress()).Build()
-
-		// the source key here is the same for both to make our lives easier in BlockSyncResponse
-		anotherBlockAvailabilityResponse := builders.BlockAvailabilityResponseInput().
-			WithLastCommittedBlockHeight(primitives.BlockHeight(4)).
-			WithFirstBlockHeight(primitives.BlockHeight(1)).
-			WithLastBlockHeight(primitives.BlockHeight(4)).
-			WithSenderNodeAddress(senderKeyPair.NodeAddress()).Build()
-
-		// fake the collecting car response
-		harness.blockStorage.HandleBlockAvailabilityResponse(ctx, blockAvailabilityResponse)
-		harness.blockStorage.HandleBlockAvailabilityResponse(ctx, anotherBlockAvailabilityResponse)
-
-		harness.gossip.When("SendBlockSyncRequest", mock.Any, mock.Any).Return(nil, nil).Times(1)
-
-		// latch until we pick a source and request blocks from it
-		require.NoError(t, test.EventuallyVerify(200*time.Millisecond, harness.gossip), "availability response stage failed")
-
-		// senderKeyPair must be the same as the chosen BlockAvailabilityResponse
-		blockSyncResponse := builders.BlockSyncResponseInput().
-			WithSenderNodeAddress(senderKeyPair.NodeAddress()).
-			WithFirstBlockHeight(primitives.BlockHeight(1)).
-			WithLastBlockHeight(primitives.BlockHeight(4)).
-			WithLastCommittedBlockHeight(primitives.BlockHeight(4)).
-			WithSenderNodeAddress(senderKeyPair.NodeAddress()).Build()
-
-		// fake the response
-		harness.blockStorage.HandleBlockSyncResponse(ctx, blockSyncResponse)
-
-		// verify that we committed the blocks
-		harness.verifyMocks(t, 4)
 	})
 }
 
@@ -133,7 +89,7 @@ func TestSyncPetitioner_NeverStartsWhenBlocksAreCommitted(t *testing.T) {
 	// to make sure we stay at the same state logically.
 	// system timing may cause it to flake, but at a very low probability now
 	test.WithContext(func(ctx context.Context) {
-		harness := newBlockStorageHarness().
+		harness := newBlockStorageHarness(t).
 			withSyncNoCommitTimeout(5 * time.Millisecond).
 			withSyncBroadcast(1).
 			withCommitStateDiff(10).

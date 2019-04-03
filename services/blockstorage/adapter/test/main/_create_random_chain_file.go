@@ -1,8 +1,15 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package main
 
 import (
 	"flag"
 	"fmt"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/services/blockstorage/adapter/test"
 	testUtils "github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
@@ -23,7 +30,7 @@ func main() {
 	start := time.Now()
 	fmt.Printf("\nusing:\noutput directory: %s\nvirtual chain id: %d\n\nloading adapter and building index...\n", conf.BlockStorageFileSystemDataDir(), conf.VirtualChainId())
 
-	adapter, release, err := test.NewFilesystemAdapterDriver(conf)
+	adapter, release, err := test.NewFilesystemAdapterDriver(log.GetLogger(), conf)
 	if err != nil {
 		panic(err)
 	}
@@ -51,7 +58,7 @@ func main() {
 			_ = block.TransactionsBlock.Header.MutateBlockHeight(nextHeight)
 		}
 
-		err := adapter.WriteNextBlock(block)
+		_, err := adapter.WriteNextBlock(block)
 		if err != nil {
 			logger.Log("error writing block to file at height %d. error %s", nextHeight, err)
 			panic(err)

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package blockstorage
 
 import (
@@ -26,9 +32,9 @@ func (s *service) sourceHandleBlockAvailabilityRequest(ctx context.Context, mess
 
 	logger.Info("received block availability request",
 		log.Stringable("petitioner", message.Sender.SenderNodeAddress()),
-		log.Stringable("requested-first-block", message.SignedBatchRange.FirstBlockHeight()),
-		log.Stringable("requested-last-block", message.SignedBatchRange.LastBlockHeight()),
-		log.Stringable("requested-last-committed-block", message.SignedBatchRange.LastCommittedBlockHeight()))
+		log.Uint64("requested-first-block", uint64(message.SignedBatchRange.FirstBlockHeight())),
+		log.Uint64("requested-last-block", uint64(message.SignedBatchRange.LastBlockHeight())),
+		log.Uint64("requested-last-committed-block", uint64(message.SignedBatchRange.LastCommittedBlockHeight())))
 
 	out, err := s.GetLastCommittedBlockHeight(ctx, &services.GetLastCommittedBlockHeightInput{})
 	if err != nil {
@@ -60,9 +66,9 @@ func (s *service) sourceHandleBlockAvailabilityRequest(ctx context.Context, mess
 
 	logger.Info("sending the response for availability request",
 		log.Stringable("petitioner", response.RecipientNodeAddress),
-		log.Stringable("first-available-block-height", response.Message.SignedBatchRange.FirstBlockHeight()),
-		log.Stringable("last-available-block-height", response.Message.SignedBatchRange.LastBlockHeight()),
-		log.Stringable("last-committed-available-block-height", response.Message.SignedBatchRange.LastCommittedBlockHeight()),
+		log.Uint64("first-available-block-height", uint64(response.Message.SignedBatchRange.FirstBlockHeight())),
+		log.Uint64("last-available-block-height", uint64(response.Message.SignedBatchRange.LastBlockHeight())),
+		log.Uint64("last-committed-available-block-height", uint64(response.Message.SignedBatchRange.LastCommittedBlockHeight())),
 		log.Stringable("source", response.Message.Sender.SenderNodeAddress()),
 	)
 
@@ -86,12 +92,12 @@ func (s *service) sourceHandleBlockSyncRequest(ctx context.Context, message *gos
 
 	logger.Info("received block sync request",
 		log.Stringable("petitioner", message.Sender.SenderNodeAddress()),
-		log.Stringable("first-requested-block-height", firstRequestedBlockHeight),
-		log.Stringable("last-requested-block-height", lastRequestedBlockHeight),
-		log.Stringable("last-committed-block-height", lastCommittedBlockHeight))
+		log.Uint64("first-requested-block-height", uint64(firstRequestedBlockHeight)),
+		log.Uint64("last-requested-block-height", uint64(lastRequestedBlockHeight)),
+		log.Uint64("last-committed-block-height", uint64(lastCommittedBlockHeight)))
 
-	if lastCommittedBlockHeight <= firstRequestedBlockHeight {
-		return errors.New("firstBlockHeight is greater or equal to lastCommittedBlockHeight")
+	if firstRequestedBlockHeight > lastCommittedBlockHeight {
+		return errors.New("firstBlockHeight is greater than lastCommittedBlockHeight")
 	}
 
 	if firstRequestedBlockHeight-lastCommittedBlockHeight > primitives.BlockHeight(s.config.BlockSyncNumBlocksInBatch()-1) {
@@ -105,8 +111,8 @@ func (s *service) sourceHandleBlockSyncRequest(ctx context.Context, message *gos
 
 	logger.Info("sending blocks to another node via block sync",
 		log.Stringable("petitioner", senderNodeAddress),
-		log.Stringable("first-available-block-height", firstAvailableBlockHeight),
-		log.Stringable("last-available-block-height", lastAvailableBlockHeight))
+		log.Uint64("first-available-block-height", uint64(firstAvailableBlockHeight)),
+		log.Uint64("last-available-block-height", uint64(lastAvailableBlockHeight)))
 
 	response := &gossiptopics.BlockSyncResponseInput{
 		RecipientNodeAddress: senderNodeAddress,

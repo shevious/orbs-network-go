@@ -1,16 +1,23 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
 	"context"
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
+	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func TestCommitTransactionReceiptsRequestsNextBlockOnMismatch(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
+		h := newHarness(t).start(ctx)
 
 		h.assumeBlockStorageAtHeight(0) // so that we report transactions for block 1
 		out, err := h.reportTransactionsAsCommitted(ctx)
@@ -28,22 +35,18 @@ func TestCommitTransactionReceiptsRequestsNextBlockOnMismatch(t *testing.T) {
 	})
 }
 
-func TestCommitTransactionReceiptsNotifiesPublicAPIOnlyForOwnTransactions(t *testing.T) {
+func TestCommitTransactionReceiptForTxThatWasNeverInPendingPool_ShouldCommitItAnyway(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(ctx)
-		myTx1 := builders.TransferTransaction().Build()
-		myTx2 := builders.TransferTransaction().Build()
-		otherTx := builders.TransferTransaction().Build()
+		h := newHarness(t).start(ctx)
+		tx := builders.TransferTransaction().Build()
 
-		h.ignoringForwardMessages()
+		h.reportTransactionsAsCommitted(ctx, tx)
 
-		h.addNewTransaction(ctx, myTx1)
-		h.addNewTransaction(ctx, myTx2)
-		h.handleForwardFrom(ctx, otherNodeKeyPair, otherTx)
-
-		h.fastForwardTo(ctx, 2)
-		h.expectTransactionResultsCallbackFor(myTx1, myTx2)
-		h.reportTransactionsAsCommitted(ctx, myTx1, myTx2, otherTx)
+		output, err := h.getTxReceipt(ctx, tx)
+		require.NoError(t, err, "could not get output for tx committed without adding it to pending pool")
+		require.NotNil(t, output)
+		require.Equal(t, protocol.TRANSACTION_STATUS_COMMITTED.String(), output.TransactionStatus.String(), "transaction was not committed")
+		require.NotNil(t, output.TransactionReceipt, "transaction was not committed")
 
 		require.NoError(t, h.verifyMocks(), "Mocks were not executed as planned")
 	})

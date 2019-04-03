@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package benchmarkconsensus
 
 import (
 	"context"
+	"fmt"
 	"github.com/orbs-network/orbs-network-go/crypto/digest"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/trace"
@@ -59,7 +66,7 @@ func (s *service) leaderConsensusRoundTick(ctx context.Context) error {
 			logger.Error("leader failed to save block to storage", log.Error(err))
 			return err
 		}
-
+		s.metrics.lastCommittedTime.Update(time.Now().UnixNano())
 		err = s.setLastCommittedBlock(proposedBlock, lastCommittedBlock)
 		if err != nil {
 			return err
@@ -75,7 +82,8 @@ func (s *service) leaderConsensusRoundTick(ctx context.Context) error {
 		return err
 	}
 
-	if s.config.NetworkSize(0) == 1 {
+	networkSize := len(s.config.GenesisValidatorNodes())
+	if networkSize == 1 {
 		s.successfullyVotedBlocks <- lastCommittedBlockHeight
 	}
 
@@ -99,7 +107,7 @@ func (s *service) leaderGenerateGenesisBlock() *protocol.BlockPairContainer {
 	blockPair, err := s.leaderSignBlockProposal(transactionsBlock, resultsBlock)
 	if err != nil {
 		s.logger.Error("leader failed to sign genesis block", log.Error(err))
-		panic("leader failed to sign genesis block, abort")
+		panic(fmt.Sprintf("leader failed to sign genesis block, abort, err=%s", err.Error()))
 		return nil
 	}
 	return blockPair
@@ -231,8 +239,8 @@ func (s *service) leaderValidateVote(sender *gossipmessages.SenderSignature, sta
 	}
 
 	// approved signer
-	if _, found := s.config.FederationNodes(0)[sender.SenderNodeAddress().KeyForMap()]; !found {
-		return errors.Errorf("signer with public key %s is not a valid federation member", sender.SenderNodeAddress())
+	if _, found := s.config.GenesisValidatorNodes()[sender.SenderNodeAddress().KeyForMap()]; !found {
+		return errors.Errorf("signer with public key %s is not a valid validator", sender.SenderNodeAddress())
 	}
 
 	// signature

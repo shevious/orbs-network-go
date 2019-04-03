@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package builders
 
 import (
@@ -116,7 +122,8 @@ func (bc *blockChunk) Build() *gossiptopics.BlockSyncResponseInput {
 	var blocks []*protocol.BlockPairContainer
 
 	for i := bc.firstBlockHeight; i <= bc.lastBlockHeight; i++ {
-		blocks = append(blocks, BlockPair().WithHeight(i).WithBlockCreated(time.Now()).Build())
+		blockTime := time.Unix(1550394190000000000+int64(i), 0) // deterministic block creation in the past based on block height
+		blocks = append(blocks, BlockPair().WithHeight(i).WithBlockCreated(blockTime).Build())
 	}
 
 	return &gossiptopics.BlockSyncResponseInput{

@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -19,7 +25,7 @@ func (s *service) ValidateTransactionsForOrdering(ctx context.Context, input *se
 		return nil, err
 	}
 
-	vctx := s.createValidationContext()
+	proposedBlockTimestamp := input.CurrentBlockTimestamp
 
 	for _, tx := range input.SignedTransactions {
 		txHash := digest.CalcTxHash(tx.Transaction())
@@ -27,7 +33,7 @@ func (s *service) ValidateTransactionsForOrdering(ctx context.Context, input *se
 			return nil, errors.Errorf("transaction with hash %s already committed", txHash)
 		}
 
-		if err := vctx.validateTransaction(tx); err != nil {
+		if err := s.validationContext.ValidateTransactionForOrdering(tx, proposedBlockTimestamp); err != nil {
 			return nil, errors.Wrap(err, fmt.Sprintf("transaction with hash %s is invalid", txHash))
 		}
 	}

@@ -1,13 +1,19 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package testkit
 
 import (
 	"context"
 	"fmt"
 	"github.com/orbs-network/orbs-network-go/crypto/digest"
+	"github.com/orbs-network/orbs-network-go/instrumentation"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/trace"
 	"github.com/orbs-network/orbs-network-go/synchronization"
-	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"math"
@@ -92,10 +98,10 @@ func (t *txTracker) waitForTransaction(ctx context.Context, txHash primitives.Sh
 			return txHeight
 		}
 
-		logger.Info("transaction not found as of block", log.Transaction(txHash), log.BlockHeight(topHeight))
+		logger.Info("transaction not found in current block, will wait for next block to look for it again", log.Transaction(txHash), log.BlockHeight(topHeight))
 		err := t.blockTracker.WaitForBlock(ctx, topHeight+1) // wait for next block
 		if err != nil {
-			test.DebugPrintGoroutineStacks() // since test timed out, help find deadlocked goroutines
+			instrumentation.DebugPrintGoroutineStacks(logger) // since test timed out, help find deadlocked goroutines
 			panic(fmt.Sprintf("timed out waiting for transaction with hash %s", txHash))
 		}
 	}

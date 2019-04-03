@@ -1,8 +1,15 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package publicapi
 
 import (
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-network-go/test/builders"
+	"github.com/orbs-network/orbs-network-go/test/rand"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/protocol/client"
@@ -13,7 +20,7 @@ import (
 )
 
 func TestGetTransactionReceiptProof_PrepareResponse(t *testing.T) {
-	ctrlRand := test.NewControlledRand(t)
+	ctrlRand := rand.NewControlledRand(t)
 	blockTime := primitives.TimestampNano(time.Now().UnixNano())
 	receipt := builders.TransactionReceipt().WithRandomHash(ctrlRand).Builder()
 
@@ -82,6 +89,6 @@ func TestGetTransactionReceiptProof_PrepareResponse_NilProof(t *testing.T) {
 func TestGetTransactionReceiptProof_EmptyResponse(t *testing.T) {
 	response := toGetTxProofOutput(nil, nil)
 
-	require.EqualValues(t, protocol.REQUEST_STATUS_BAD_REQUEST, response.ClientResponse.RequestResult().RequestStatus(), "Request status is wrong")
+	require.EqualValues(t, protocol.REQUEST_STATUS_NOT_FOUND, response.ClientResponse.RequestResult().RequestStatus(), "Request status is wrong")
 	require.EqualValues(t, protocol.TRANSACTION_STATUS_NO_RECORD_FOUND, response.ClientResponse.TransactionStatus(), "txStatus response is wrong")
 }

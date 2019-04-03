@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package filesystem
 
 import (
 	"fmt"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"sync"
@@ -13,10 +20,12 @@ type blockHeightIndex struct {
 	firstBlockInTsBucket map[uint32]primitives.BlockHeight
 	topBlock             *protocol.BlockPairContainer
 	topBlockHeight       primitives.BlockHeight
+	logger               log.BasicLogger
 }
 
-func newBlockHeightIndex(firstBlockOffset int64) *blockHeightIndex {
+func newBlockHeightIndex(logger log.BasicLogger, firstBlockOffset int64) *blockHeightIndex {
 	return &blockHeightIndex{
+		logger:               logger,
 		heightOffset:         map[primitives.BlockHeight]int64{1: firstBlockOffset},
 		firstBlockInTsBucket: map[uint32]primitives.BlockHeight{},
 		topBlock:             nil,

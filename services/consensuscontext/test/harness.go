@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -13,11 +19,11 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/stretchr/testify/require"
-	"os"
 	"testing"
+	"time"
 )
 
-var federationNodeAddressesForTest = []primitives.NodeAddress{
+var validatorNodeAddressesForTest = []primitives.NodeAddress{
 	primitives.NodeAddress("dfc06c5be24a67adee80b35ab4f147bb1a35c55f"),
 	primitives.NodeAddress("92d469d7c004cc0b24a192d9457836bf38effa27"),
 	primitives.NodeAddress("a899b318e65915aa2de02841eeb72fe51fddad96"),
@@ -45,7 +51,7 @@ func (h *harness) requestTransactionsBlock(ctx context.Context) (*protocol.Trans
 		MaxBlockSizeKb:          0,
 		MaxNumberOfTransactions: 0,
 		PrevBlockHash:           hash.CalcSha256([]byte{1}),
-		PrevBlockTimestamp:      0,
+		PrevBlockTimestamp:      primitives.TimestampNano(time.Now().UnixNano() - 100),
 	})
 	if err != nil {
 		return nil, err
@@ -75,6 +81,7 @@ func (h *harness) expectTxPoolToReturnXTransactions(numTransactionsToReturn uint
 	for i := uint32(0); i < numTransactionsToReturn; i++ {
 		targetAddress := builders.ClientAddressForEd25519SignerForTests(2)
 		output.SignedTransactions = append(output.SignedTransactions, builders.TransferTransaction().WithAmountAndTargetAddress(uint64(i+1)*10, targetAddress).Build())
+		output.ProposedBlockTimestamp = primitives.TimestampNano(time.Now().UnixNano())
 	}
 
 	h.transactionPool.When("GetTransactionsForOrdering", mock.Any, mock.Any).Return(output, nil).Times(1)
@@ -116,18 +123,18 @@ func (h *harness) expectStateHashToReturn(hash []byte) {
 
 }
 
-func newHarness() *harness {
-	log := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newHarness(tb testing.TB) *harness {
+	log := log.DefaultTestingLogger(tb)
 
 	txPool := &services.MockTransactionPool{}
 	machine := &services.MockVirtualMachine{}
 	state := &services.MockStateStorage{}
-	federationNodes := make(map[string]config.FederationNode)
-	for _, nodeAddress := range federationNodeAddressesForTest {
-		federationNodes[nodeAddress.KeyForMap()] = config.NewHardCodedFederationNode(nodeAddress)
+	genesisValidatorNodes := make(map[string]config.ValidatorNode)
+	for _, nodeAddress := range validatorNodeAddressesForTest {
+		genesisValidatorNodes[nodeAddress.KeyForMap()] = config.NewHardCodedValidatorNode(nodeAddress)
 	}
 
-	cfg := config.ForConsensusContextTests(federationNodes)
+	cfg := config.ForConsensusContextTests(genesisValidatorNodes)
 
 	metricFactory := metric.NewRegistry()
 

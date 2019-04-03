@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
 	"context"
+	"fmt"
 	"github.com/orbs-network/go-mock"
 	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
@@ -17,7 +24,6 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/services/gossiptopics"
 	"github.com/orbs-network/orbs-spec/types/go/services/handlers"
 	"github.com/stretchr/testify/require"
-	"os"
 	"testing"
 	"time"
 )
@@ -31,6 +37,7 @@ type configForBlockStorageTests struct {
 	queryGraceStart       time.Duration
 	queryGraceEnd         time.Duration
 	queryExpirationWindow time.Duration
+	blockTrackerGrace     time.Duration
 }
 
 func (c *configForBlockStorageTests) NodeAddress() primitives.NodeAddress {
@@ -61,6 +68,10 @@ func (c *configForBlockStorageTests) TransactionExpirationWindow() time.Duration
 	return c.queryExpirationWindow
 }
 
+func (c *configForBlockStorageTests) BlockTrackerGraceTimeout() time.Duration {
+	return c.blockTrackerGrace
+}
+
 type harness struct {
 	stateStorage   *services.MockStateStorage
 	storageAdapter testkit.TamperingInMemoryBlockPersistence
@@ -70,6 +81,7 @@ type harness struct {
 	txPool         *services.MockTransactionPool
 	config         config.BlockStorageConfig
 	logger         log.BasicLogger
+	logOutput      *log.TestOutput
 }
 
 func (d *harness) withSyncBroadcast(times int) *harness {
@@ -113,7 +125,7 @@ func (d *harness) commitBlock(ctx context.Context, blockPairContainer *protocol.
 func (d *harness) numOfWrittenBlocks() int {
 	numBlocks, err := d.storageAdapter.GetLastBlockHeight()
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("failed getting last block height, err=%s", err.Error()))
 	}
 	return int(numBlocks)
 }
@@ -128,12 +140,12 @@ func (d *harness) getLastBlockHeight(ctx context.Context, t *testing.T) *service
 func (d *harness) getBlock(height int) *protocol.BlockPairContainer {
 	txBlock, err := d.storageAdapter.GetTransactionsBlock(primitives.BlockHeight(height))
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("failed getting tx block, err=%s", err.Error()))
 	}
 
 	rxBlock, err := d.storageAdapter.GetResultsBlock(primitives.BlockHeight(height))
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("failed getting results block, err=%s", err.Error()))
 	}
 
 	return &protocol.BlockPairContainer{
@@ -202,17 +214,19 @@ func createConfig(nodeAddress primitives.NodeAddress) config.BlockStorageConfig 
 	cfg.queryGraceStart = 5 * time.Second
 	cfg.queryGraceEnd = 5 * time.Second
 	cfg.queryExpirationWindow = 30 * time.Minute
+	cfg.blockTrackerGrace = 1 * time.Hour
 
 	return cfg
 }
 
-func newBlockStorageHarness() *harness {
-	logger := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newBlockStorageHarness(tb testing.TB) *harness {
+	logOutput := log.NewTestOutput(tb, log.NewHumanReadableFormatter())
+	logger := log.GetLogger().WithOutput(logOutput)
 	keyPair := keys.EcdsaSecp256K1KeyPairForTests(0)
 	cfg := createConfig(keyPair.NodeAddress())
 
 	registry := metric.NewRegistry()
-	d := &harness{config: cfg, logger: logger}
+	d := &harness{config: cfg, logger: logger, logOutput: logOutput}
 	d.stateStorage = &services.MockStateStorage{}
 	d.storageAdapter = testkit.NewBlockPersistence(logger, nil, registry)
 
@@ -234,6 +248,11 @@ func newBlockStorageHarness() *harness {
 		}, nil
 	}).AtLeast(0)
 
+	return d
+}
+
+func (d *harness) allowingErrorsMatching(pattern string) *harness {
+	d.logOutput.AllowErrorsMatching(pattern)
 	return d
 }
 

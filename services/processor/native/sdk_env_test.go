@@ -1,8 +1,15 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package native
 
 import (
 	"context"
 	sdkContext "github.com/orbs-network/orbs-contract-sdk/go/context"
+	"github.com/orbs-network/orbs-network-go/config"
 	"github.com/orbs-network/orbs-network-go/test/builders"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/orbs-network/orbs-spec/types/go/services/handlers"
@@ -23,6 +30,13 @@ func TestSdkEnv_GetBlockTimestamp(t *testing.T) {
 
 	height := s.SdkEnvGetBlockTimestamp(EXAMPLE_CONTEXT, sdkContext.PERMISSION_SCOPE_SERVICE)
 	require.EqualValues(t, height, uint64(12), "block timestamp should be returned")
+}
+
+func TestSdkEnv_GetVirtualChainId(t *testing.T) {
+	s := &service{config: config.ForNativeProcessorTests(42)}
+	vcid := s.SdkEnvGetVirtualChainId(EXAMPLE_CONTEXT, sdkContext.PERMISSION_SCOPE_SERVICE)
+	require.EqualValues(t, vcid, 42, "virtual chain id should be returned")
+
 }
 
 func createEnvSdk() *service {

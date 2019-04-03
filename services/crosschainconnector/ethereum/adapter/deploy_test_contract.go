@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package adapter
 
 import (
@@ -29,6 +35,7 @@ func (c *connectorCommon) DeploySimpleStorageContract(auth *bind.TransactOpts, s
 	return address.Bytes(), err
 }
 
+// this is a helper for integration test, not used in production code
 func (c *connectorCommon) DeployEthereumContract(auth *bind.TransactOpts, abijson string, bytecode string, params ...interface{}) (*common.Address, *bind.BoundContract, error) {
 	client, err := c.getContractCaller()
 	if err != nil {
@@ -69,7 +76,7 @@ func (c *connectorCommon) DeployEthereumContractManually(ctx context.Context, au
 
 	nonce, err := client.PendingNonceAt(ctx, auth.From)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve account nonce: %v", err)
+		return nil, fmt.Errorf("failed to retrieve account nonce: %s", err)
 	}
 
 	rawTx := types.NewContractCreation(nonce, big.NewInt(0), 300000000, big.NewInt(1), data)

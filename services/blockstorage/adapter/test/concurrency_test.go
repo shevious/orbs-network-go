@@ -1,8 +1,15 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
-	"github.com/orbs-network/orbs-network-go/test"
+	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/test/builders"
+	"github.com/orbs-network/orbs-network-go/test/rand"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
 	"github.com/orbs-network/orbs-spec/types/go/protocol"
 	"github.com/stretchr/testify/require"
@@ -13,17 +20,17 @@ func TestCanWriteAndScanConcurrently(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping Integration tests in short mode")
 	}
-	ctrlRand := test.NewControlledRand(t)
+	ctrlRand := rand.NewControlledRand(t)
 	blocks := builders.RandomizedBlockChain(2, ctrlRand)
 
 	conf := newTempFileConfig()
 	defer conf.cleanDir()
 
-	fsa, closeAdapter, err := NewFilesystemAdapterDriver(conf)
+	fsa, closeAdapter, err := NewFilesystemAdapterDriver(log.DefaultTestingLogger(t), conf)
 	require.NoError(t, err)
 	defer closeAdapter()
 
-	err = fsa.WriteNextBlock(blocks[0]) // write only the first block in the chain
+	_, err = fsa.WriteNextBlock(blocks[0]) // write only the first block in the chain
 	require.NoError(t, err)
 
 	var topHeightRead primitives.BlockHeight
@@ -43,7 +50,7 @@ func TestCanWriteAndScanConcurrently(t *testing.T) {
 
 	waitFor(midScan)
 
-	err = fsa.WriteNextBlock(blocks[1]) // write the second block while a block scan is ongoing
+	_, err = fsa.WriteNextBlock(blocks[1]) // write the second block while a block scan is ongoing
 	require.NoError(t, err, "should be able to write block while scanning")
 
 	signal(secondBlockWritten)

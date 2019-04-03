@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -12,7 +18,6 @@ import (
 	"github.com/orbs-network/orbs-spec/types/go/services"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"os"
 	"testing"
 	"time"
 )
@@ -24,8 +29,8 @@ type harness struct {
 	vmMock  *services.MockVirtualMachine
 }
 
-func newPublicApiHarness(ctx context.Context, txTimeout time.Duration, outOfSyncWarningTime time.Duration) *harness {
-	logger := log.GetLogger().WithOutput(log.NewFormattingOutput(os.Stdout, log.NewHumanReadableFormatter()))
+func newPublicApiHarness(ctx context.Context, tb testing.TB, txTimeout time.Duration, outOfSyncWarningTime time.Duration) *harness {
+	logger := log.DefaultTestingLogger(tb)
 	cfg := config.ForPublicApiTests(uint32(builders.DEFAULT_TEST_VIRTUAL_CHAIN_ID), txTimeout, outOfSyncWarningTime)
 	txpMock := makeTxMock()
 	vmMock := &services.MockVirtualMachine{}
@@ -115,8 +120,39 @@ func (h *harness) transactionPendingNoProofCalled() {
 
 func (h *harness) getTransactionStatusFailed() {
 	h.transactionIsNotInPool()
-	h.bksMock.When("GetTransactionReceipt", mock.Any, mock.Any).Return(nil, errors.Errorf("stam")).Times(1)
+	h.bksMock.When("GetTransactionReceipt", mock.Any, mock.Any).Return(nil, errors.Errorf("someErr")).Times(1)
 	h.bksMock.Never("GenerateReceiptProof", mock.Any)
+}
+
+func (h *harness) prepareGetBlock(blockPair *protocol.BlockPairContainer, lastCommitedBlockPair *protocol.BlockPairContainer) {
+	if blockPair != nil {
+		h.bksMock.When("GetBlockPair", mock.Any, mock.Any).Return(
+			&services.GetBlockPairOutput{
+				BlockPair: blockPair,
+			}).Times(1)
+	} else {
+		h.bksMock.When("GetBlockPair", mock.Any, mock.Any).Return(
+			&services.GetBlockPairOutput{
+				BlockPair: nil,
+			}).Times(1)
+		h.prepareGetLastBlock(lastCommitedBlockPair)
+	}
+}
+
+func (h *harness) prepareGetLastBlock(lastCommitedBlockPair *protocol.BlockPairContainer) {
+	if lastCommitedBlockPair != nil {
+		h.bksMock.When("GetLastCommittedBlockHeight", mock.Any, mock.Any).Return(
+			&services.GetLastCommittedBlockHeightOutput{
+				LastCommittedBlockTimestamp: lastCommitedBlockPair.TransactionsBlock.Header.Timestamp(),
+				LastCommittedBlockHeight:    lastCommitedBlockPair.TransactionsBlock.Header.BlockHeight(),
+			}).Times(1)
+	} else {
+		h.bksMock.When("GetLastCommittedBlockHeight", mock.Any, mock.Any).Return(nil, errors.Errorf("someErr")).Times(1)
+	}
+}
+
+func (h *harness) getBlockFails() {
+	h.bksMock.When("GetBlockPair", mock.Any, mock.Any).Return(nil, errors.Errorf("someErr")).Times(1)
 }
 
 func (h *harness) verifyMocks(t *testing.T) {

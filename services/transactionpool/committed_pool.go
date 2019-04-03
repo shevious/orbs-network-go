@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package transactionpool
 
 import (
@@ -10,8 +16,10 @@ import (
 )
 
 type committedTxPool struct {
+	sync.RWMutex
 	transactions map[string]*committedTransaction
-	lock         *sync.RWMutex
+
+	transactionPoolFutureTimestampGraceTimeout func() time.Duration
 
 	metrics *committedPoolMetrics
 }
@@ -23,33 +31,31 @@ type committedPoolMetrics struct {
 
 func newCommittedPoolMetrics(factory metric.Factory) *committedPoolMetrics {
 	return &committedPoolMetrics{
-		transactionCount: factory.NewGauge("TransactionPool.CommittedPool.TransactionCount"),
-		poolSizeInBytes:  factory.NewGauge("TransactionPool.CommittedPool.PoolSizeInBytes"),
+		transactionCount: factory.NewGauge("TransactionPool.CommittedPool.Transactions.Count"),
+		poolSizeInBytes:  factory.NewGauge("TransactionPool.CommittedPool.PoolSize.Bytes"),
 	}
 }
 
-func NewCommittedPool(metricFactory metric.Factory) *committedTxPool {
+func NewCommittedPool(transactionPoolFutureTimestampGraceTimeout func() time.Duration, metricFactory metric.Factory) *committedTxPool {
 	return &committedTxPool{
+		transactionPoolFutureTimestampGraceTimeout: transactionPoolFutureTimestampGraceTimeout,
 		transactions: make(map[string]*committedTransaction),
-		lock:         &sync.RWMutex{},
 		metrics:      newCommittedPoolMetrics(metricFactory),
 	}
 }
 
 type committedTransaction struct {
 	receipt        *protocol.TransactionReceipt
-	timestampAdded primitives.TimestampNano
 	blockHeight    primitives.BlockHeight
 	blockTimestamp primitives.TimestampNano
 }
 
-func (p *committedTxPool) add(receipt *protocol.TransactionReceipt, tsAdded primitives.TimestampNano, blockHeight primitives.BlockHeight, blockTs primitives.TimestampNano) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (p *committedTxPool) add(receipt *protocol.TransactionReceipt, blockHeight primitives.BlockHeight, blockTs primitives.TimestampNano) {
+	p.Lock()
+	defer p.Unlock()
 
 	transaction := &committedTransaction{
 		receipt:        receipt,
-		timestampAdded: tsAdded,
 		blockHeight:    blockHeight,
 		blockTimestamp: blockTs,
 	}
@@ -62,30 +68,28 @@ func (p *committedTxPool) add(receipt *protocol.TransactionReceipt, tsAdded prim
 }
 
 func (p *committedTxPool) get(txHash primitives.Sha256) *committedTransaction {
-	key := txHash.KeyForMap()
+	p.RLock()
+	defer p.RUnlock()
 
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
-	tx := p.transactions[key]
-
-	return tx
+	return p.transactions[txHash.KeyForMap()]
 }
 
 func (p *committedTxPool) has(txHash primitives.Sha256) bool {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+	p.RLock()
+	defer p.RUnlock()
 
 	_, ok := p.transactions[txHash.KeyForMap()]
 	return ok
 }
 
-func (p *committedTxPool) clearTransactionsOlderThan(ctx context.Context, time time.Time) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+func (p *committedTxPool) clearTransactionsOlderThan(ctx context.Context, timestamp primitives.TimestampNano) {
+	p.Lock()
+	defer p.Unlock()
+
+	futureTimestampGrace := primitives.TimestampNano(p.transactionPoolFutureTimestampGraceTimeout().Nanoseconds())
 
 	for _, tx := range p.transactions {
-		if int64(tx.timestampAdded) < time.UnixNano() {
+		if tx.blockTimestamp+futureTimestampGrace < timestamp {
 			delete(p.transactions, tx.receipt.Txhash().KeyForMap())
 
 			p.metrics.transactionCount.Dec()

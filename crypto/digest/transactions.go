@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package digest
 
 import (
@@ -18,6 +24,15 @@ func CalcContractStateDiffHash(stateDiff *protocol.ContractStateDiff) primitives
 
 func CalcTxHash(transaction *protocol.Transaction) primitives.Sha256 {
 	return hash.CalcSha256(transaction.Raw())
+}
+
+func CalcTxHashsFromSignedTransactions(transactions []*protocol.SignedTransaction) []primitives.Sha256 {
+	txHashes := make([]primitives.Sha256, len(transactions))
+	for i, tx := range transactions {
+		txHashes[i] = CalcTxHash(tx.Transaction())
+	}
+
+	return txHashes
 }
 
 func CalcSignedTxHashes(signedTransactions []*protocol.SignedTransaction) []primitives.Sha256 {

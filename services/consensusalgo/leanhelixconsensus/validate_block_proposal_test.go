@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package leanhelixconsensus
 
 import (
@@ -43,43 +49,43 @@ func aMockValidateBlockHashThatReturnsError(blockHash primitives.Sha256, tx *pro
 func TestValidateBlockProposal_HappyPath(t *testing.T) {
 	block := testValidators.AStructurallyValidBlock()
 	prevBlock := testValidators.AStructurallyValidBlock()
-	require.True(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
+	require.NoError(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
 		validateTransactionsBlock: aMockValidateTransactionsBlockThatReturnsSuccess,
 		validateResultsBlock:      aMockValidateResultsBlockThatReturnsSuccess,
 		validateBlockHash:         aMockValidateBlockHashThatReturnsSuccess,
-		logger:                    log.GetLogger(),
+		logger:                    log.DefaultTestingLogger(t),
 	}), "should return true when ValidateTransactionsBlock() and ValidateResultsBlock() are successful")
 }
 
 func TestValidateBlockProposal_FailsOnErrorInTransactionsBlock(t *testing.T) {
 	block := testValidators.AStructurallyValidBlock()
 	prevBlock := testValidators.AStructurallyValidBlock()
-	require.False(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
+	require.Error(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
 		validateTransactionsBlock: aMockValidateTransactionsBlockThatReturnsError,
 		validateResultsBlock:      aMockValidateResultsBlockThatReturnsSuccess,
 		validateBlockHash:         aMockValidateBlockHashThatReturnsSuccess,
-		logger:                    log.GetLogger(),
+		logger:                    log.DefaultTestingLogger(t),
 	}), "should return false when ValidateTransactionsBlock() returns an error")
 }
 
 func TestValidateBlockProposal_FailsOnErrorInResultsBlock(t *testing.T) {
 	block := testValidators.AStructurallyValidBlock()
 	prevBlock := testValidators.AStructurallyValidBlock()
-	require.False(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
+	require.Error(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
 		validateTransactionsBlock: aMockValidateTransactionsBlockThatReturnsSuccess,
 		validateResultsBlock:      aMockValidateResultsBlockThatReturnsError,
 		validateBlockHash:         aMockValidateBlockHashThatReturnsSuccess,
-		logger:                    log.GetLogger(),
+		logger:                    log.DefaultTestingLogger(t),
 	}), "should return false when ValidateResultsBlock() returns an error")
 }
 
 func TestValidateBlockProposal_FailsOnErrorInValidateBlockHash(t *testing.T) {
 	block := testValidators.AStructurallyValidBlock()
 	prevBlock := testValidators.AStructurallyValidBlock()
-	require.False(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
+	require.Error(t, validateBlockProposalInternal(context.Background(), ToLeanHelixBlock(block), []byte{1, 2, 3, 4}, ToLeanHelixBlock(prevBlock), &validateBlockProposalContext{
 		validateTransactionsBlock: aMockValidateTransactionsBlockThatReturnsSuccess,
 		validateResultsBlock:      aMockValidateResultsBlockThatReturnsSuccess,
 		validateBlockHash:         aMockValidateBlockHashThatReturnsError,
-		logger:                    log.GetLogger(),
+		logger:                    log.DefaultTestingLogger(t),
 	}), "should return false when ValidateBlockHash() returns an error")
 }

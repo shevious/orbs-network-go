@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -8,7 +14,7 @@ import (
 )
 
 func newNonLeaderHarness(t *testing.T, ctx context.Context) *harness {
-	h := newHarness(false)
+	h := newHarness(t, false)
 	h.createService(ctx)
 	return h
 }
@@ -23,7 +29,7 @@ func TestNonLeaderInit(t *testing.T) {
 
 func TestNonLeaderDoesNotProposeBlocks(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		h := newHarness(false)
+		h := newHarness(t, false)
 		h.expectNewBlockProposalNotRequested()
 
 		h.createService(ctx)

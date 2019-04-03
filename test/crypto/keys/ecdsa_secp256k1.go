@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package keys
 
 import (
@@ -76,6 +82,19 @@ func NodeAddressesForTests() []primitives.NodeAddress {
 
 	for i := 0; i < len(ecdsaSecp256K1KeyPairs); i++ {
 		res[i] = EcdsaSecp256K1KeyPairForTests(i).NodeAddress()
+	}
+	return res
+}
+
+func NodeAddressesForTestsToIndexes(nodeAddresses []primitives.NodeAddress) []int {
+	var res []int
+	for _, nodeAddress := range nodeAddresses {
+		for index := 0; index < len(ecdsaSecp256K1KeyPairs); index++ {
+			if EcdsaSecp256K1KeyPairForTests(index).NodeAddress().Equal(nodeAddress) {
+				res = append(res, index)
+				break
+			}
+		}
 	}
 	return res
 }

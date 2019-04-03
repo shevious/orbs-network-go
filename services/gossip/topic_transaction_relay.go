@@ -1,7 +1,14 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package gossip
 
 import (
 	"context"
+	"github.com/orbs-network/orbs-network-go/crypto/digest"
 	"github.com/orbs-network/orbs-network-go/instrumentation/log"
 	"github.com/orbs-network/orbs-network-go/instrumentation/trace"
 	"github.com/orbs-network/orbs-network-go/services/gossip/adapter"
@@ -25,12 +32,16 @@ func (s *service) receivedTransactionRelayMessage(ctx context.Context, header *g
 }
 
 func (s *service) BroadcastForwardedTransactions(ctx context.Context, input *gossiptopics.ForwardedTransactionsInput) (*gossiptopics.EmptyOutput, error) {
-	s.logger.Info("broadcasting forwarded transactions", trace.LogFieldFrom(ctx), log.Stringable("sender", input.Message.Sender), log.StringableSlice("transactions", input.Message.SignedTransactions))
+	s.logger.Info("broadcasting forwarded transactions",
+		trace.LogFieldFrom(ctx),
+		log.Stringable("sender", input.Message.Sender),
+		log.StringableSlice("transactions", digest.CalcTxHashsFromSignedTransactions(input.Message.SignedTransactions)))
 
 	header := (&gossipmessages.HeaderBuilder{
 		Topic:            gossipmessages.HEADER_TOPIC_TRANSACTION_RELAY,
 		TransactionRelay: gossipmessages.TRANSACTION_RELAY_FORWARDED_TRANSACTIONS,
 		RecipientMode:    gossipmessages.RECIPIENT_LIST_MODE_BROADCAST,
+		VirtualChainId:   s.config.VirtualChainId(),
 	}).Build()
 
 	payloads, err := codec.EncodeForwardedTransactions(header, input.Message)
@@ -51,7 +62,10 @@ func (s *service) receivedForwardedTransactions(ctx context.Context, header *gos
 	if err != nil {
 		return
 	}
-	logger.Info("received forwarded transactions", log.Stringable("sender", message.Sender), log.StringableSlice("transactions", message.SignedTransactions))
+
+	logger.Info("received forwarded transactions",
+		log.Stringable("sender", message.Sender),
+		log.StringableSlice("transactions", digest.CalcTxHashsFromSignedTransactions(message.SignedTransactions)))
 
 	s.handlers.RLock()
 	defer s.handlers.RUnlock()

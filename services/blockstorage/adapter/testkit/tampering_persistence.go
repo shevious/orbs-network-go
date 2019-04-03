@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package testkit
 
 import (
@@ -40,16 +46,18 @@ func (bp *tamperingBlockPersistence) FailNextBlocks() {
 	bp.failNextBlocks = true
 }
 
-func (bp *tamperingBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) error {
+func (bp *tamperingBlockPersistence) WriteNextBlock(blockPair *protocol.BlockPairContainer) (bool, error) {
 	if bp.failNextBlocks {
-		return errors.New("could not write a block")
+		return false, errors.New("could not write a block")
 	}
-	err := bp.InMemoryBlockPersistence.WriteNextBlock(blockPair)
+	added, err := bp.InMemoryBlockPersistence.WriteNextBlock(blockPair)
 	if err != nil {
-		return err
+		return added, err
 	}
-	bp.advertiseAllTransactions(blockPair.TransactionsBlock)
-	return nil
+	if added {
+		bp.advertiseAllTransactions(blockPair.TransactionsBlock)
+	}
+	return added, nil
 }
 
 func (bp *tamperingBlockPersistence) advertiseAllTransactions(block *protocol.TransactionsBlockContainer) {

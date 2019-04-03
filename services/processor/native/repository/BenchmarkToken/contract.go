@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package benchmarktoken
 
 import (
@@ -16,7 +22,7 @@ const CONTRACT_NAME = "BenchmarkToken"
 var PUBLIC = sdk.Export(transfer, getBalance)
 var SYSTEM = sdk.Export(_init)
 
-const TOTAL_SUPPLY = 1000000
+const TOTAL_SUPPLY = uint64(10000000000)
 
 func _init() {
 	ownerAddress := address.GetSignerAddress()

@@ -14,8 +14,10 @@ ARG SKIP_DEVTOOLS
 
 ARG GIT_COMMIT
 
+ARG BUILD_FLAG
+
 ARG SEMVER
 
 RUN sh -x build-binaries.sh
 
-RUN go get -u github.com/jstemmer/go-junit-report
+RUN go get -u github.com/orbs-network/go-junit-report

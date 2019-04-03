@@ -1,3 +1,9 @@
+// Copyright 2019 the orbs-network-go authors
+// This file is part of the orbs-network-go library in the Orbs project.
+//
+// This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree.
+// The above notice should be included in all copies or substantial portions of the software.
+
 package test
 
 import (
@@ -17,7 +23,7 @@ import (
 
 func TestSendTransaction_AlreadyCommitted(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newPublicApiHarness(ctx, time.Millisecond, time.Minute)
+		harness := newPublicApiHarness(ctx, t, time.Millisecond, time.Minute)
 		harness.addTransactionReturnsAlreadyCommitted()
 
 		result, err := harness.papi.SendTransaction(ctx, &services.SendTransactionInput{
@@ -35,7 +41,7 @@ func TestSendTransaction_AlreadyCommitted(t *testing.T) {
 
 func TestSendTransaction_BlocksUntilTransactionCompletes(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newPublicApiHarness(ctx, time.Second, time.Minute)
+		harness := newPublicApiHarness(ctx, t, time.Second, time.Minute)
 
 		txb := builders.Transaction().Builder()
 		harness.onAddNewTransaction(func() {
@@ -59,7 +65,7 @@ func TestSendTransaction_BlocksUntilTransactionCompletes(t *testing.T) {
 
 func TestSendTransaction_BlocksUntilTransactionErrors(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		harness := newPublicApiHarness(ctx, time.Second, time.Minute)
+		harness := newPublicApiHarness(ctx, t, time.Second, time.Minute)
 
 		txb := builders.Transaction().Builder()
 		txHash := digest.CalcTxHash(txb.Build().Transaction())
@@ -88,7 +94,7 @@ func TestSendTransaction_BlocksUntilTransactionErrors(t *testing.T) {
 func TestSendTransaction_TimesOut(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
 		txTimeout := 10 * time.Millisecond
-		harness := newPublicApiHarness(ctx, txTimeout, time.Minute)
+		harness := newPublicApiHarness(ctx, t, txTimeout, time.Minute)
 
 		txb := builders.Transaction().Builder()
 		harness.onAddNewTransaction(func() {})
@@ -106,31 +112,30 @@ func TestSendTransaction_TimesOut(t *testing.T) {
 		txHash := digest.CalcTxHash(txb.Build().Transaction())
 
 		require.Contains(t, err.Error(), fmt.Sprintf("waiting aborted due to context termination for key %s", txHash.String()))
-		require.WithinDuration(t, time.Now(), start, 2*txTimeout, "timeout duration exceeded")
+		require.WithinDuration(t, time.Now(), start, txTimeout+100*time.Millisecond, "timeout duration seems much longer than expected")
 		require.NotNil(t, result, "Send transaction returned nil instead of object")
 	})
 }
 
-func TestSendTransaction_ReturnImmediately(t *testing.T) {
+func TestSendTransactionAsync_ReturnsImmediately(t *testing.T) {
 	test.WithContext(func(ctx context.Context) {
-		txTimeout := 100 * time.Second // won't actually wait please don't change
-		harness := newPublicApiHarness(ctx, txTimeout, time.Minute)
+		txTimeout := 100 * time.Hour // infinity - won't actually wait please don't change
+		harness := newPublicApiHarness(ctx, t, txTimeout, time.Minute)
 
 		txb := builders.Transaction().Builder()
 		harness.onAddNewTransaction(func() {})
 
 		start := time.Now()
-		result, _ := harness.papi.SendTransaction(ctx, &services.SendTransactionInput{
+		result, _ := harness.papi.SendTransactionAsync(ctx, &services.SendTransactionInput{
 			ClientRequest: (&client.SendTransactionRequestBuilder{
 				SignedTransaction: txb,
 			}).Build(),
-			ReturnImmediately: 1,
 		})
 
 		harness.verifyMocks(t) // contract test
 
 		// value test
-		require.WithinDuration(t, time.Now(), start, 1*time.Millisecond, "timeout duration exceeded")
+		require.WithinDuration(t, time.Now(), start, 10*time.Second, "timeout duration exceeded")
 		require.EqualValues(t, protocol.TRANSACTION_STATUS_PENDING, result.ClientResponse.TransactionStatus(), "should be pending")
 	})
 }
