@@ -229,6 +229,9 @@ Or
 curl -XPOST http://$NODE_IP/vchains/$VCHAIN/debug/logs/fiter-off
 ```
 
+## Troubleshooting Guide
+See [here](TROUBLESHOOTING.md)
+
 ## Development principles
 Refer to the [Contributor's Guide](CONTRIBUTING.md) (work in progress)
 
