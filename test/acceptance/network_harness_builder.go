@@ -8,6 +8,7 @@ package acceptance
 
 import (
 	"context"
+	"github.com/orbs-network/orbs-network-go/services/gossip/adapter/memory"
 	"github.com/orbs-network/orbs-network-go/synchronization/supervised"
 	"github.com/orbs-network/orbs-network-go/test"
 	"github.com/orbs-network/orbs-spec/types/go/primitives"
@@ -181,10 +182,10 @@ func (b *networkHarnessBuilder) makeLogger(tb testing.TB, testId string) (log.Lo
 		WithOutput(testOutput).
 		WithFilters(
 			log.IgnoreMessagesMatching("transport message received"),
-			log.IgnoreMessagesMatching("Metric recorded"),
+			log.ExcludeField(memory.LogTag),
 		).
 		WithFilters(b.logFilters...)
-	//WithFilters(log.Or(log.OnlyErrors(), log.OnlyCheckpoints(), log.OnlyMetrics()))
+	//WithFilters(log.Or(log.OnlyErrors(), log.OnlyCheckpoints()))
 
 	return logger, testOutput
 }
