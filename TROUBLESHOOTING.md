@@ -18,8 +18,7 @@ Presently used as an internal tool so it open to Orbs developers only.
 ### Dashboards
 
 * Concise - [Orbs Production](https://orbsnetwork.grafana.net/d/a-3pW-3mk/orbs-production?orgId=1&refresh=15s&from=now-3h&to=now)
-
-* Detailed - [Orbs DevOps]
+* Detailed - [Orbs DevOps](https://orbsnetwork.grafana.net/d/Eqvddt3iz/orbs-devops?orgId=1&refresh=15s&from=now-3h&to=now)
 
 ### Architecture
 
@@ -36,7 +35,40 @@ TODO add link to Prism
 
 ## Logging
 
-We use logz.io to collect logs from the main net.
+We use logz.io to collect logs from main net.
 Login [here](https://app.logz.io/#/dashboard/kibana/discover/4501ce90-4638-11e9-b5c5-c306d6d38229?_g=())
 
-Presently logz.io is open to Orbs developers only   
+*Presently logz.io is open to Orbs developers only.*
+
+### Toggle Info Logs
+
+By default, only **Error** logs are written to logz.io. To temporarily write **Info** logs to logz.io for debugging, use the following script: 
+
+```
+#!/bin/sh
+
+for ip in $NODE_IPS
+do
+	curl -XPOST http://${ip}/vchains/${VCHAIN}/debug/logs/filter-off
+	echo "Exit code from IP ${ip}: $?"
+done
+
+```
+
+You will need to define the environment variables VCHAIN and NODE_IPS for this to work
+
+To disable logs, use the same script, but with `filter-on` in the instead of `filter-off` in the `curl` command.
+
+### Navigating logz.io
+
+#### Creating and saving filters
+
+#### Setting time limits
+* Relative / Absolute
+
+#### Showing node address on every line
+* or any other property 
+
+#### Free text search
+
+
